@@ -54,11 +54,19 @@ def main():
 
     def upload_file(data, key):
         client = boto3.client('s3')
+
+        if isinstance(data, basestring):
+            body = data
+            content_type = 'text/html; charset=UTF-8'
+        else:
+            body = data.read()
+            content_type = data.info()['Content-type']
+
         client.put_object(
-            Body=data.read(),
+            Body=body,
             Bucket=BUCKET,
             Key=key,
-            ContentType=data.info()['Content-type'])
+            ContentType=content_type)
 
     dates = get_available_dates()
     for date in dates:
