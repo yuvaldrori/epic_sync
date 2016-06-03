@@ -42,7 +42,7 @@ def main():
         try:
             mirror_list = client.get_object(
                 Bucket=BUCKET,
-                Key=list_path)['Body']
+                Key=list_path)['Body'].read()
         except botocore.exceptions.ClientError as e:
             logging.info(
                 'Failed getting list by date from mirror for date: {}'.format(date))
