@@ -2,12 +2,14 @@ import json
 import urllib2
 import boto3
 import botocore
+from time import sleep
 
 
 def main():
     BUCKET = 'epic-archive-mirror'
     API = 'http://epic.gsfc.nasa.gov/api'
     ARCHIVE = 'http://epic.gsfc.nasa.gov/epic-archive'
+    RETRIES = 5
 
     def get_available_dates():
         data = urllib2.urlopen(
@@ -29,7 +31,11 @@ def main():
 
     def get_image_data(image_path):
         data = urllib2.urlopen(image_path)
-        return data
+        for i in range(RETRIES):
+            if data.code == 200:
+                return data
+            sleep(1)
+        return None
 
     def list_exists(date):
         client = boto3.client('s3')
@@ -59,6 +65,7 @@ def main():
         if not list_exists(date):
             image_list = get_list_by_date(date)
             images = get_images_names_by_date(image_list)
+            all_images_downloaded = True
             for image in images:
                 thumb = '{endpoint}/thumbs/{image}.jpg'.format(
                     endpoint=ARCHIVE, image=image)
@@ -69,11 +76,18 @@ def main():
                 thumb_key = 'images/thumbs/{image}.jpg'.format(image=image)
                 jpg_key = 'images/jpg/{image}.jpg'.format(image=image)
                 png_key = 'images/png/{image}.png'.format(image=image)
-                upload_file(get_image_data(thumb), thumb_key)
-                upload_file(get_image_data(jpg), jpg_key)
-                upload_file(get_image_data(png), png_key)
-            list_path = 'images/list/images_{date}.json'.format(date=date)
-            upload_file(json.dumps(image_list, date), list_path)
+                thumb_data = get_image_data(thumb)
+                jpg_data = get_image_data(jpg)
+                png_data = get_image_data(png)
+                if thumb_data is None or jpg_data is None or png_data is None:
+                    all_images_downloaded = False
+                    break
+                upload_file(thumb_data, thumb_key)
+                upload_file(jpg_data, jpg_key)
+                upload_file(png_data, png_key)
+            if all_images_downloaded:
+                list_path = 'images/list/images_{date}.json'.format(date=date)
+                upload_file(json.dumps(image_list, date), list_path)
 
 if __name__ == '__main__':
     main()
