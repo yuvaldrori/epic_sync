@@ -115,8 +115,7 @@ def main():
         try:
             client.head_object(
                 Bucket=BUCKET,
-                Key='images_{date}.json'.format(
-                    date=date))
+                Key='images/list/images_{date}.json'.format(date=date))
         except botocore.exceptions.ClientError as e:
             error_code = int(e.response['Error']['Code'])
             if error_code == 404:
