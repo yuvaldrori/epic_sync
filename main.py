@@ -6,6 +6,7 @@ from time import sleep
 import datetime
 import argparse
 import logging
+from operator import itemgetter
 
 
 def main():
@@ -49,7 +50,7 @@ def main():
             return None
         return json.loads(mirror_list)
 
-    def get_images_names_by_date(image_list):
+    def get_images_names_from_list(image_list):
         images = []
         for l in image_list:
             images.append(l['image'])
@@ -65,64 +66,16 @@ def main():
             'Failed getting image data for image path: {}'.format(image_path))
         return None
 
-    def date_synced(date):
-        if args.full or not list_exists(date):
-            logging.info(
-                'Date: {} needs sync because running in full mode or list does not exist in mirror'.format(date))
-            return False
-
+    def too_old_to_sync(date):
         now = datetime.datetime.today()
         test_date = datetime.datetime.strptime(date, '%Y-%m-%d')
         delta = now - test_date
 
         if delta.days > DAYS_TRACK_CHANGES:
-            logging.info(
-                'No need to sync date: {}, too old for rescan'.format(date))
+            logging.info('Date {} too old'.format(date))
             return True
 
-        original = get_list_by_date(date)
-        mirror = get_mirror_list_by_date(date)
-
-        if original is None or mirror is None or not list_up_to_date(
-                original, mirror):
-            logging.info(
-                'Date: {} needs syncing because original list was changed'.format(date))
-            return False
-
-        return True
-
-    def list_up_to_date(original, mirror):
-        if len(original) != len(mirror):
-            logging.info('List not up to date - different size')
-            return False
-
-        original_set = set()
-        for image in original:
-            original_set.add(image['image'])
-
-        mirror_set = set()
-        for image in mirror:
-            mirror_set.add(image['image'])
-
-        if original_set != mirror_set:
-            logging.info('List not up to date - missing images')
-            return False
-
-        return True
-
-    def list_exists(date):
-        client = boto3.client('s3')
-        try:
-            client.head_object(
-                Bucket=BUCKET,
-                Key='images/list/images_{date}.json'.format(date=date))
-        except botocore.exceptions.ClientError as e:
-            error_code = int(e.response['Error']['Code'])
-            if error_code == 404:
-                logging.info(
-                    'List for date: {} does not exist on mirror'.format(date))
-                return False
-        return True
+        return False
 
     def upload_file(data, key):
         client = boto3.client('s3')
@@ -140,6 +93,35 @@ def main():
                 Bucket=BUCKET,
                 Key=key,
                 ContentType=content_type)
+
+    def download_images_in_list(image_list):
+        images = get_images_names_from_list(image_list)
+        all_images_downloaded = True
+        for image in images:
+            logging.info('image: {}'.format(image))
+            thumb = '{endpoint}/thumbs/{image}.jpg'.format(
+                endpoint=ARCHIVE, image=image)
+            jpg = '{endpoint}/jpg/{image}.jpg'.format(
+                endpoint=ARCHIVE, image=image)
+            png = '{endpoint}/png/{image}.png'.format(
+                endpoint=ARCHIVE, image=image)
+            thumb_key = 'images/thumbs/{image}.jpg'.format(image=image)
+            logging.info('thumb key: {}'.format(thumb_key))
+            jpg_key = 'images/jpg/{image}.jpg'.format(image=image)
+            logging.info('jpg key: {}'.format(jpg_key))
+            png_key = 'images/png/{image}.png'.format(image=image)
+            logging.info('png key: {}'.format(png_key))
+            thumb_data = get_image_data(thumb)
+            jpg_data = get_image_data(jpg)
+            png_data = get_image_data(png)
+            if thumb_data is None or jpg_data is None or png_data is None:
+                logging.info('Failed downloading one of the images')
+                all_images_downloaded = False
+                break
+            upload_file(thumb_data, thumb_key)
+            upload_file(jpg_data, jpg_key)
+            upload_file(png_data, png_key)
+        return all_images_downloaded
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -161,46 +143,49 @@ def main():
 
     dates = get_available_dates()
     upload_file(json.dumps(dates), 'images/available_dates.json')
+
     first_iteration = True
     for date in dates:
         logging.info('date: {}'.format(date))
-        if not date_synced(date):
-            image_list = get_list_by_date(date)
-            images = get_images_names_by_date(image_list)
-            all_images_downloaded = True
-            for image in images:
-                logging.info('image: {}'.format(image))
-                thumb = '{endpoint}/thumbs/{image}.jpg'.format(
-                    endpoint=ARCHIVE, image=image)
-                jpg = '{endpoint}/jpg/{image}.jpg'.format(
-                    endpoint=ARCHIVE, image=image)
-                png = '{endpoint}/png/{image}.png'.format(
-                    endpoint=ARCHIVE, image=image)
-                thumb_key = 'images/thumbs/{image}.jpg'.format(image=image)
-                logging.info('thumb key: {}'.format(thumb_key))
-                jpg_key = 'images/jpg/{image}.jpg'.format(image=image)
-                logging.info('jpg key: {}'.format(jpg_key))
-                png_key = 'images/png/{image}.png'.format(image=image)
-                logging.info('png key: {}'.format(png_key))
-                thumb_data = get_image_data(thumb)
-                jpg_data = get_image_data(jpg)
-                png_data = get_image_data(png)
-                if thumb_data is None or jpg_data is None or png_data is None:
-                    logging.info('Failed downloading one of the images')
-                    all_images_downloaded = False
-                    break
-                upload_file(thumb_data, thumb_key)
-                upload_file(jpg_data, jpg_key)
-                upload_file(png_data, png_key)
-            if all_images_downloaded:
-                list_path = 'images/list/images_{date}.json'.format(date=date)
-                logging.info(
-                    'All images uploaded, writing list: {}'.format(list_path))
-                upload_file(json.dumps(image_list), list_path)
-                if first_iteration:
-                    upload_file(
-                        json.dumps(image_list),
-                        'images/images_latest.json')
+        if not args.full and too_old_to_sync(date):
+            break
+
+        daily_image_list_from_archive = get_mirror_list_by_date(date)
+        daily_image_list_from_api = get_list_by_date(date)
+
+        list_of_images_to_download = []
+        daily_image_list_to_archive = daily_image_list_from_api
+        if daily_image_list_from_archive is None:
+            logging.info('New list')
+            list_of_images_to_download = daily_image_list_from_api
+        else:
+            logging.info('Existing list')
+            archive_names = set(
+                get_images_names_from_list(daily_image_list_from_archive))
+            api_names = set(
+                get_images_names_from_list(daily_image_list_from_api))
+            new_images = api_names - archive_names
+            for new_image in new_images:
+                new_image_key = next(
+                    (item for item in daily_image_list_from_api if item['image'] == new_image), None)
+                new_image_key['new'] = True
+                list_of_images_to_download.append(new_image_key)
+            daily_image_list_to_archive = daily_image_list_from_archive + \
+                list_of_images_to_download
+
+        if len(list_of_images_to_download) > 0 and download_images_in_list(
+                list_of_images_to_download):
+            logging.info('New images')
+            list_path = 'images/list/images_{date}.json'.format(date=date)
+            list_content = sorted(
+                daily_image_list_to_archive,
+                key=itemgetter('date'),
+                reverse=True)
+            upload_file(json.dumps(list_content), list_path)
+            if first_iteration:
+                upload_file(
+                    json.dumps(list_content), 'images/images_latest.json')
+
         first_iteration = False
 
 if __name__ == '__main__':
