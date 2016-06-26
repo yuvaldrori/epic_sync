@@ -179,8 +179,7 @@ def main():
             list_path = 'images/list/images_{date}.json'.format(date=date)
             list_content = sorted(
                 daily_image_list_to_archive,
-                key=itemgetter('date'),
-                reverse=True)
+                key=itemgetter('date'))
             upload_file(json.dumps(list_content), list_path)
             if first_iteration:
                 upload_file(
