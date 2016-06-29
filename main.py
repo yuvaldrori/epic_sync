@@ -2,7 +2,7 @@ import json
 import urllib2
 import boto3
 import botocore
-from time import sleep
+from time import sleep, time
 import datetime
 import argparse
 import logging
@@ -11,10 +11,41 @@ from operator import itemgetter
 
 def main():
     BUCKET = 'epic-archive-mirror'
+    DISTRIBUTION_ID = 'E2NGB7E5BXXA9J'
     API = 'http://epic.gsfc.nasa.gov/api'
     ARCHIVE = 'http://epic.gsfc.nasa.gov/epic-archive'
+    AVAILABLE_DATES_PATH_ON_MIRROR = 'images/available_dates.json'
     RETRIES = 5
     DAYS_TRACK_CHANGES = 14
+
+    def invalidate_files(files):
+        client = boto3.client('cloudfront')
+        response = client.create_invalidation(
+            DistributionId=DISTRIBUTION_ID,
+            InvalidationBatch={
+                'Paths': {
+                    'Quantity': len(files),
+                    'Items': files
+                },
+                'CallerReference': str(int(time()))
+            }
+        )
+        invalidation_id = response['Invalidation']['Id']
+        logging.info(
+            'Created invalidation for files {files} with ID {id}'.format(
+                files=files, id=invalidation_id))
+
+    def file_exists(file):
+        client = boto3.client('s3')
+        try:
+            client.head_object(
+                Bucket=BUCKET,
+                Key=file)
+        except botocore.exceptions.ClientError as e:
+            error_code = int(e.response['Error']['Code'])
+            if error_code == 404:
+                return False
+        return True
 
     def get_available_dates():
         data = urllib2.urlopen(
@@ -36,19 +67,21 @@ def main():
         logging.info('Failed getting list by date for date: {}'.format(date))
         return None
 
-    def get_mirror_list_by_date(date):
+    def get_json_file_from_mirror(file):
         client = boto3.client('s3')
-        list_path = 'images/list/images_{date}.json'.format(date=date)
-        mirror_list = ''
         try:
-            mirror_list = client.get_object(
+            data = client.get_object(
                 Bucket=BUCKET,
                 Key=list_path)['Body'].read()
         except botocore.exceptions.ClientError as e:
             logging.info(
-                'Failed getting list by date from mirror for date: {}'.format(date))
+                'Failed getting json file {} from mirror'.format(file))
             return None
-        return json.loads(mirror_list)
+        return json.loads(data)
+
+    def get_mirror_list_by_date(date):
+        path = 'images/list/images_{date}.json'.format(date=date)
+        return get_json_file_from_mirror(path)
 
     def get_images_names_from_list(image_list):
         images = []
@@ -141,8 +174,13 @@ def main():
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
 
+    files_to_invalidate = []
+
     dates = get_available_dates()
-    upload_file(json.dumps(dates), 'images/available_dates.json')
+    dates_on_mirror = get_json_file_from_mirror(AVAILABLE_DATES_PATH_ON_MIRROR)
+    if dates_on_mirror != dates:
+        upload_file(json.dumps(dates), AVAILABLE_DATES_PATH_ON_MIRROR)
+        files_to_invalidate.append('/' + AVAILABLE_DATES_PATH_ON_MIRROR)
 
     first_iteration = True
     for date in dates:
@@ -186,6 +224,7 @@ def main():
                     json.dumps(list_content), 'images/images_latest.json')
 
         first_iteration = False
+
 
 if __name__ == '__main__':
     main()
