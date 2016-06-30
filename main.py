@@ -15,6 +15,7 @@ def main():
     API = 'http://epic.gsfc.nasa.gov/api'
     ARCHIVE = 'http://epic.gsfc.nasa.gov/epic-archive'
     AVAILABLE_DATES_PATH_ON_MIRROR = 'images/available_dates.json'
+    LATEST_IMAGES_PATH_ON_MIRROR = 'images/images_latest.json'
     RETRIES = 5
     DAYS_TRACK_CHANGES = 14
 
@@ -67,7 +68,7 @@ def main():
         logging.info('Failed getting list by date for date: {}'.format(date))
         return None
 
-    def get_json_file_from_mirror(file):
+    def get_json_file_from_mirror(list_path):
         client = boto3.client('s3')
         try:
             data = client.get_object(
@@ -219,11 +220,16 @@ def main():
                 daily_image_list_to_archive,
                 key=itemgetter('date'))
             upload_file(json.dumps(list_content), list_path)
+            files_to_invalidate.append('/' + list_path)
             if first_iteration:
                 upload_file(
-                    json.dumps(list_content), 'images/images_latest.json')
+                    json.dumps(list_content), LATEST_IMAGES_PATH_ON_MIRROR)
+                files_to_invalidate.append('/' + LATEST_IMAGES_PATH_ON_MIRROR)
 
         first_iteration = False
+
+    if len(files_to_invalidate) > 0:
+        invalidate_files(files_to_invalidate)
 
 
 if __name__ == '__main__':
