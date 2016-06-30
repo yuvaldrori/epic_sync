@@ -19,6 +19,24 @@ def main():
     RETRIES = 5
     DAYS_TRACK_CHANGES = 14
 
+    def list_all_png_images():
+        client = boto3.resource('s3')
+        pngs = []
+        for obj in client.Bucket(BUCKET).objects.filter(Prefix='images/png/'):
+            pngs.append(obj.key)
+        return pngs
+
+    def list_all_images_mentioned_in_lists():
+        client = boto3.resource('s3')
+        lists = list(
+            client.Bucket(BUCKET).objects.filter(
+                Prefix='images/list/'))
+        images = []
+        for l in lists:
+            data = get_json_file_from_mirror(l.key)
+            images += get_images_names_from_list(data)
+        return images
+
     def invalidate_files(files):
         client = boto3.client('cloudfront')
         response = client.create_invalidation(
