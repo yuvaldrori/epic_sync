@@ -240,6 +240,9 @@ def main():
 
         if len(list_of_images_to_download) > 0:
             failed_images = download_images_in_list(list_of_images_to_download)
+            for item in list(daily_image_list_to_archive):
+                if item['image'] in failed_images:
+                    daily_image_list_to_archive.remove(item)
             logging.info('New images')
             list_path = 'images/list/images_{date}.json'.format(date=date)
             list_content = sorted(
