@@ -67,22 +67,28 @@ def main():
         return True
 
     def get_available_dates():
-        data = urllib2.urlopen(
-            '{endpoint}/images.php?available_dates'.format(
-                endpoint=API))
-        if data.code == 200:
-            dates = json.loads(data.read())
-            dates.reverse()
-            return dates
+        try:
+            data = urllib2.urlopen(
+                '{endpoint}/images.php?available_dates'.format(
+                    endpoint=API))
+            if data.code == 200:
+                dates = json.loads(data.read())
+                dates.reverse()
+                return dates
+        except:
+            pass
         logging.info('Failed getting available dates')
         return None
 
     def get_list_by_date(date):
-        data = urllib2.urlopen(
-            '{endpoint}/images.php?date={date}'.format(
-                endpoint=API, date=date))
-        if data.code == 200:
-            return json.loads(data.read())
+        try:
+            data = urllib2.urlopen(
+                '{endpoint}/images.php?date={date}'.format(
+                    endpoint=API, date=date))
+            if data.code == 200:
+                return json.loads(data.read())
+        except:
+            pass
         logging.info('Failed getting list by date for date: {}'.format(date))
         return None
 
@@ -109,11 +115,13 @@ def main():
         return images
 
     def get_image_data(image_path):
-        data = urllib2.urlopen(image_path)
         for i in range(RETRIES):
-            if data.code == 200:
-                return data
-            sleep(1)
+            try:
+                data = urllib2.urlopen(image_path)
+                if data.code == 200:
+                    return data
+            except:
+                sleep(1)
         logging.info(
             'Failed getting image data for image path: {}'.format(image_path))
         return None
@@ -148,7 +156,7 @@ def main():
 
     def download_images_in_list(image_list):
         images = get_images_names_from_list(image_list)
-        all_images_downloaded = True
+        failed_images = []
         for image in images:
             logging.info('image: {}'.format(image))
             thumb = '{endpoint}/thumbs/{image}.jpg'.format(
@@ -168,12 +176,12 @@ def main():
             png_data = get_image_data(png)
             if thumb_data is None or jpg_data is None or png_data is None:
                 logging.info('Failed downloading one of the images')
-                all_images_downloaded = False
-                break
+                failed_images.append(image)
+                continue
             upload_file(thumb_data, thumb_key)
             upload_file(jpg_data, jpg_key)
             upload_file(png_data, png_key)
-        return all_images_downloaded
+        return failed_images
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -230,8 +238,8 @@ def main():
             daily_image_list_to_archive = daily_image_list_from_archive + \
                 list_of_images_to_download
 
-        if len(list_of_images_to_download) > 0 and download_images_in_list(
-                list_of_images_to_download):
+        if len(list_of_images_to_download) > 0:
+            failed_images = download_images_in_list(list_of_images_to_download)
             logging.info('New images')
             list_path = 'images/list/images_{date}.json'.format(date=date)
             list_content = sorted(
