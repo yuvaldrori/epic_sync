@@ -147,6 +147,12 @@ def main():
                 Key=key,
                 ContentType=content_type)
 
+    def upload_file(file_name, key):
+        client = boto3.client('s3')
+
+        if not args.dryrun:
+            client.upload_file(file_name, BUCKET, key)
+
     def process_images_in_list(image_list):
         images = get_images_names_from_list(image_list)
         failed_images = []
@@ -174,19 +180,17 @@ def main():
                     '-resize',
                     res_string,
                     local_jpg_file_name)
-                with open(local_jpg_file_name, 'rb') as f:
-                    jpg_data = f.read()
                 # compatibility hack
                 if res == '2048':
                     jpg_key = 'images/jpg/{}.jpg'.format(image)
                 else:
                     jpg_key = 'images/jpg/{}/{}.jpg'.format(res, image)
                 logging.info('jpg key: {}'.format(jpg_key))
-                upload_data(jpg_data, jpg_key)
+                upload_file(local_jpg_file_name, jpg_key)
                 os.remove(local_jpg_file_name)
 
+            upload_file(local_png_file_name, png_key)
             os.remove(local_png_file_name)
-            upload_data(png_data, png_key)
 
         return failed_images
 
