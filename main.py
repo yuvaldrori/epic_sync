@@ -7,17 +7,11 @@ import datetime
 import argparse
 import logging
 from operator import itemgetter
+from sh import convert
+import os
 
 
 def main():
-    BUCKET = 'epic-archive-mirror'
-    DISTRIBUTION_ID = 'E2NGB7E5BXXA9J'
-    API = 'http://epic.gsfc.nasa.gov/api'
-    ARCHIVE = 'http://epic.gsfc.nasa.gov/epic-archive'
-    AVAILABLE_DATES_PATH_ON_MIRROR = 'images/available_dates.json'
-    LATEST_IMAGES_PATH_ON_MIRROR = 'images/images_latest.json'
-    RETRIES = 5
-    DAYS_TRACK_CHANGES = 14
 
     def list_all_png_images():
         client = boto3.resource('s3')
@@ -96,8 +90,7 @@ def main():
         client = boto3.client('s3')
         try:
             data = client.get_object(
-                Bucket=BUCKET,
-                Key=list_path)['Body'].read()
+                Bucket=BUCKET, Key=list_path)['Body'].read()
         except botocore.exceptions.ClientError as e:
             logging.info(
                 'Failed getting json file {} from mirror'.format(file))
@@ -137,7 +130,7 @@ def main():
 
         return False
 
-    def upload_file(data, key):
+    def upload_data(data, key):
         client = boto3.client('s3')
 
         if isinstance(data, basestring):
@@ -154,33 +147,47 @@ def main():
                 Key=key,
                 ContentType=content_type)
 
-    def download_images_in_list(image_list):
+    def process_images_in_list(image_list):
         images = get_images_names_from_list(image_list)
         failed_images = []
         for image in images:
             logging.info('image: {}'.format(image))
-            thumb = '{endpoint}/thumbs/{image}.jpg'.format(
-                endpoint=ARCHIVE, image=image)
-            jpg = '{endpoint}/jpg/{image}.jpg'.format(
-                endpoint=ARCHIVE, image=image)
             png = '{endpoint}/png/{image}.png'.format(
                 endpoint=ARCHIVE, image=image)
-            thumb_key = 'images/thumbs/{image}.jpg'.format(image=image)
-            logging.info('thumb key: {}'.format(thumb_key))
-            jpg_key = 'images/jpg/{image}.jpg'.format(image=image)
-            logging.info('jpg key: {}'.format(jpg_key))
             png_key = 'images/png/{image}.png'.format(image=image)
             logging.info('png key: {}'.format(png_key))
-            thumb_data = get_image_data(thumb)
-            jpg_data = get_image_data(jpg)
             png_data = get_image_data(png)
-            if thumb_data is None or jpg_data is None or png_data is None:
-                logging.info('Failed downloading one of the images')
+            if png_data is None:
+                logging.info('Failed image download')
                 failed_images.append(image)
                 continue
-            upload_file(thumb_data, thumb_key)
-            upload_file(jpg_data, jpg_key)
-            upload_file(png_data, png_key)
+            base_name = os.path.abspath(
+                os.path.join(os.path.sep, 'tmp', image))
+            local_png_file_name = base_name + '.png'
+            local_jpg_file_name = base_name + '.jpg'
+            with open(local_png_file_name, 'wb') as f:
+                f.write(png_data.read())
+            for res in ['2048', '1024', '512', '256']:
+                res_string = '{res}x{res}'.format(res=res)
+                convert(
+                    local_png_file_name,
+                    '-resize',
+                    res_string,
+                    local_jpg_file_name)
+                with open(local_jpg_file_name, 'rb') as f:
+                    jpg_data = f.read()
+                # compatibility hack
+                if res == '2048':
+                    jpg_key = 'images/jpg/{}.jpg'.format(image)
+                else:
+                    jpg_key = 'images/jpg/{}/{}.jpg'.format(res, image)
+                logging.info('jpg key: {}'.format(jpg_key))
+                upload_data(jpg_data, jpg_key)
+                os.remove(local_jpg_file_name)
+
+            os.remove(local_png_file_name)
+            upload_data(png_data, png_key)
+
         return failed_images
 
     parser = argparse.ArgumentParser()
@@ -196,17 +203,34 @@ def main():
         '--verbose',
         help='Print debug messages',
         action='store_true')
+    parser.add_argument(
+        '--dev',
+        help='Use dev bucket',
+        action='store_true')
     args = parser.parse_args()
 
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
+
+    if args.dev:
+        BUCKET = 'dev.blueturn.earth'
+    else:
+        BUCKET = 'epic-archive-mirror'
+
+    DISTRIBUTION_ID = 'E2NGB7E5BXXA9J'
+    API = 'http://epic.gsfc.nasa.gov/api'
+    ARCHIVE = 'http://epic.gsfc.nasa.gov/epic-archive'
+    AVAILABLE_DATES_PATH_ON_MIRROR = 'images/available_dates.json'
+    LATEST_IMAGES_PATH_ON_MIRROR = 'images/images_latest.json'
+    RETRIES = 5
+    DAYS_TRACK_CHANGES = 14
 
     files_to_invalidate = []
 
     dates = get_available_dates()
     dates_on_mirror = get_json_file_from_mirror(AVAILABLE_DATES_PATH_ON_MIRROR)
     if dates_on_mirror != dates:
-        upload_file(json.dumps(dates), AVAILABLE_DATES_PATH_ON_MIRROR)
+        upload_data(json.dumps(dates), AVAILABLE_DATES_PATH_ON_MIRROR)
         files_to_invalidate.append('/' + AVAILABLE_DATES_PATH_ON_MIRROR)
 
     first_iteration = True
@@ -239,7 +263,7 @@ def main():
                 list_of_images_to_download
 
         if len(list_of_images_to_download) > 0:
-            failed_images = download_images_in_list(list_of_images_to_download)
+            failed_images = process_images_in_list(list_of_images_to_download)
             for item in list(daily_image_list_to_archive):
                 if item['image'] in failed_images:
                     daily_image_list_to_archive.remove(item)
@@ -248,10 +272,10 @@ def main():
             list_content = sorted(
                 daily_image_list_to_archive,
                 key=itemgetter('date'))
-            upload_file(json.dumps(list_content), list_path)
+            upload_data(json.dumps(list_content), list_path)
             files_to_invalidate.append('/' + list_path)
             if first_iteration:
-                upload_file(
+                upload_data(
                     json.dumps(list_content), LATEST_IMAGES_PATH_ON_MIRROR)
                 files_to_invalidate.append('/' + LATEST_IMAGES_PATH_ON_MIRROR)
 
