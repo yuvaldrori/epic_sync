@@ -234,7 +234,7 @@ def main():
     dates = get_available_dates()
     dates_on_mirror = get_json_file_from_mirror(AVAILABLE_DATES_PATH_ON_MIRROR)
     if dates_on_mirror != dates:
-        upload_data(json.dumps(dates), AVAILABLE_DATES_PATH_ON_MIRROR)
+        upload_data(json.dumps(dates, indent=4), AVAILABLE_DATES_PATH_ON_MIRROR)
         files_to_invalidate.append('/' + AVAILABLE_DATES_PATH_ON_MIRROR)
 
     first_iteration = True
@@ -269,18 +269,22 @@ def main():
         if len(list_of_images_to_download) > 0:
             failed_images = process_images_in_list(list_of_images_to_download)
             for item in list(daily_image_list_to_archive):
+                # remove failed images from list
                 if item['image'] in failed_images:
                     daily_image_list_to_archive.remove(item)
+                else:
+                    # fix coords single to double quotes
+                    item['coords'] = item['coords'].replace("'", '"')
             logging.info('New images')
             list_path = 'images/list/images_{date}.json'.format(date=date)
             list_content = sorted(
                 daily_image_list_to_archive,
                 key=itemgetter('date'))
-            upload_data(json.dumps(list_content), list_path)
+            upload_data(json.dumps(list_content, indent=4), list_path)
             files_to_invalidate.append('/' + list_path)
             if first_iteration:
                 upload_data(
-                    json.dumps(list_content), LATEST_IMAGES_PATH_ON_MIRROR)
+                    json.dumps(list_content, indent=4), LATEST_IMAGES_PATH_ON_MIRROR)
                 files_to_invalidate.append('/' + LATEST_IMAGES_PATH_ON_MIRROR)
 
         first_iteration = False
