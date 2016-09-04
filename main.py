@@ -173,7 +173,7 @@ def main():
             local_jpg_file_name = base_name + '.jpg'
             with open(local_png_file_name, 'wb') as f:
                 f.write(png_data.read())
-            for res in ['2048', '1024', '512', '256']:
+            for res in ['2048', '1024', '512', '256', '120']:
                 res_string = '{res}x{res}'.format(res=res)
                 convert(
                     local_png_file_name,
@@ -183,6 +183,9 @@ def main():
                 # compatibility hack
                 if res == '2048':
                     jpg_key = 'images/jpg/{}.jpg'.format(image)
+                # NASA thumbnail
+                elif res == '120':
+                    jpg_key = 'images/thumbs/{}.jpg'.format(image)
                 else:
                     jpg_key = 'images/jpg/{}/{}.jpg'.format(res, image)
                 logging.info('jpg key: {}'.format(jpg_key))
