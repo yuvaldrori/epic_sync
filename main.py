@@ -234,7 +234,10 @@ def main():
     dates = get_available_dates()
     dates_on_mirror = get_json_file_from_mirror(AVAILABLE_DATES_PATH_ON_MIRROR)
     if dates_on_mirror != dates:
-        upload_data(json.dumps(dates, indent=4), AVAILABLE_DATES_PATH_ON_MIRROR)
+        upload_data(
+            json.dumps(dates,
+                       indent=4),
+            AVAILABLE_DATES_PATH_ON_MIRROR)
         files_to_invalidate.append('/' + AVAILABLE_DATES_PATH_ON_MIRROR)
 
     first_iteration = True
@@ -248,7 +251,7 @@ def main():
 
         list_of_images_to_download = []
         daily_image_list_to_archive = daily_image_list_from_api
-        if daily_image_list_from_archive is None:
+        if args.full or daily_image_list_from_archive is None:
             logging.info('New list')
             list_of_images_to_download = daily_image_list_from_api
         else:
