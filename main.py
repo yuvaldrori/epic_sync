@@ -7,7 +7,7 @@ import datetime
 import argparse
 import logging
 from operator import itemgetter
-from sh import convert
+from subprocess import check_call
 import os
 
 
@@ -175,11 +175,11 @@ def main():
                 f.write(png_data.read())
             for res in ['2048', '1024', '512', '256', '120']:
                 res_string = '{res}x{res}'.format(res=res)
-                convert(
-                    local_png_file_name,
-                    '-resize',
-                    res_string,
-                    local_jpg_file_name)
+                cmd = 'convert {png} -resize {res} {jpg}'.format(
+                    png=local_png_file_name,
+                    res=res_string,
+                    jpg=local_jpg_file_name)
+                check_call(cmd, shell=True)
                 # compatibility hack
                 if res == '2048':
                     jpg_key = 'images/jpg/{}.jpg'.format(image)
