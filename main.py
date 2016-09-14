@@ -9,6 +9,7 @@ import logging
 from operator import itemgetter
 from subprocess import check_call
 import os
+from tempfile import gettempdir
 
 
 def main():
@@ -168,7 +169,7 @@ def main():
                 failed_images.append(image)
                 continue
             base_name = os.path.abspath(
-                os.path.join(os.path.sep, 'tmp', image))
+                os.path.join(gettempdir(), image))
             local_png_file_name = base_name + '.png'
             local_jpg_file_name = base_name + '.jpg'
             with open(local_png_file_name, 'wb') as f:
