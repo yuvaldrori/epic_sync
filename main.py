@@ -1,303 +1,261 @@
-import json
-import urllib2
-import boto3
-import botocore
-from time import sleep, time
-import datetime
 import argparse
+import urllib2
 import logging
-from operator import itemgetter
-from subprocess import check_call
+import json
+import boto3
 import os
 from tempfile import gettempdir
+from subprocess import check_call
+import numpy as np
+import cv2
+import math
+import random
+import sys
+from time import time
 
 
-def main():
+class Epic:
 
-    def list_all_png_images():
-        client = boto3.resource('s3')
-        pngs = []
-        for obj in client.Bucket(BUCKET).objects.filter(Prefix='images/png/'):
-            pngs.append(obj.key)
-        return pngs
+    def __init__(self, args, config):
+        self.args = args
+        self.config = config
+        self.s3 = boto3.client('s3')
+        self.invalidate_paths = []
 
-    def list_all_images_mentioned_in_lists():
-        client = boto3.resource('s3')
-        lists = list(
-            client.Bucket(BUCKET).objects.filter(
-                Prefix='images/list/'))
-        images = []
-        for l in lists:
-            data = get_json_file_from_mirror(l.key)
-            images += get_images_names_from_list(data)
-        return images
+    def invalidate(self):
+        if not self.args.dryrun and len(self.invalidate_paths) > 0:
+            paths = self.invalidate_paths
+            client = boto3.client('cloudfront')
+            response = client.create_invalidation(
+                DistributionId=self.config['distribution_id'],
+                InvalidationBatch={
+                    'Paths': {
+                        'Quantity': len(paths),
+                        'Items': paths
+                    },
+                    'CallerReference': str(int(time()))
+                }
+            )
+            invalidation_id = response['Invalidation']['Id']
+            logging.info(
+                'Created invalidation for files {} with ID {}'.format(
+                    paths, invalidation_id))
 
-    def invalidate_files(files):
-        client = boto3.client('cloudfront')
-        response = client.create_invalidation(
-            DistributionId=DISTRIBUTION_ID,
-            InvalidationBatch={
-                'Paths': {
-                    'Quantity': len(files),
-                    'Items': files
-                },
-                'CallerReference': str(int(time()))
-            }
-        )
-        invalidation_id = response['Invalidation']['Id']
-        logging.info(
-            'Created invalidation for files {files} with ID {id}'.format(
-                files=files, id=invalidation_id))
-
-    def file_exists(file):
-        client = boto3.client('s3')
+    def _read_file_from_mirror(self, bucket, key):
         try:
-            client.head_object(
-                Bucket=BUCKET,
-                Key=file)
-        except botocore.exceptions.ClientError as e:
-            error_code = int(e.response['Error']['Code'])
-            if error_code == 404:
-                return False
-        return True
-
-    def get_available_dates():
-        try:
-            data = urllib2.urlopen(
-                '{endpoint}/images.php?available_dates'.format(
-                    endpoint=API))
-            if data.code == 200:
-                dates = json.loads(data.read())
-                dates.reverse()
-                return dates
-        except:
-            pass
-        logging.info('Failed getting available dates')
-        return None
-
-    def get_list_by_date(date):
-        try:
-            data = urllib2.urlopen(
-                '{endpoint}/images.php?date={date}'.format(
-                    endpoint=API, date=date))
-            if data.code == 200:
-                return json.loads(data.read())
-        except:
-            pass
-        logging.info('Failed getting list by date for date: {}'.format(date))
-        return None
-
-    def get_json_file_from_mirror(list_path):
-        client = boto3.client('s3')
-        try:
-            data = client.get_object(
-                Bucket=BUCKET, Key=list_path)['Body'].read()
+            return self.s3.get_object(
+                Bucket=bucket, Key=key)['Body'].read()
         except botocore.exceptions.ClientError as e:
             logging.info(
-                'Failed getting json file {} from mirror'.format(file))
-            return None
-        return json.loads(data)
-
-    def get_mirror_list_by_date(date):
-        path = 'images/list/images_{date}.json'.format(date=date)
-        return get_json_file_from_mirror(path)
-
-    def get_images_names_from_list(image_list):
-        images = []
-        for l in image_list:
-            images.append(l['image'])
-        return images
-
-    def get_image_data(image_path):
-        for i in range(RETRIES):
-            try:
-                data = urllib2.urlopen(image_path)
-                if data.code == 200:
-                    return data
-            except:
-                sleep(1)
-        logging.info(
-            'Failed getting image data for image path: {}'.format(image_path))
+                'error reading file from s3://{}/{}'.format(bucket, key))
         return None
 
-    def too_old_to_sync(date):
-        now = datetime.datetime.today()
-        test_date = datetime.datetime.strptime(date, '%Y-%m-%d')
-        delta = now - test_date
+    def _read_file_from_url(self, url):
+        try:
+            data = urllib2.urlopen(url)
+            if data.code == 200:
+                return data.read()
+        except:
+            logging.info('error reading file from ' + url)
+        return None
 
-        if delta.days > DAYS_TRACK_CHANGES:
-            logging.info('Date {} too old'.format(date))
-            return True
+    def _read_json(self, data):
+        try:
+            return json.loads(data)
+        except:
+            return None
 
-        return False
-
-    def upload_data(data, key):
-        client = boto3.client('s3')
-
-        if isinstance(data, basestring):
-            body = data
-            content_type = 'text/html; charset=UTF-8'
+    def missing_dates(self):
+        ret = []
+        url = self.config['api_url'] + '/images.php?available_dates'
+        data = self._read_file_from_url(url)
+        dates_from_api = self._read_json(data)
+        if self.args.full:
+            ret = dates_from_api
         else:
-            body = data.read()
-            content_type = data.info()['Content-type']
+            data = self._read_file_from_mirror(
+                self.config['bucket'],
+                self.config['available_dates_path'])
+            dates_from_mirror = self._read_json(data)
+            ret = sorted(set(dates_from_api) - set(dates_from_mirror))
+        if len(ret) > 0:
+            self._upload_data(
+                json.dumps(dates_from_api, indent=4),
+                self.config['bucket'],
+                self.config['available_dates_path'],
+                'application/json')
+            self.invalidate_paths.append('/' + self.config['available_dates_path'])
+        return ret
 
-        if not args.dryrun:
-            client.put_object(
+    def image_list(self, date):
+        url = '{}/images.php?date={}'.format(self.config['api_url'], date)
+        data = self._read_file_from_url(url)
+        return self._read_json(data)
+
+    def _upload_file(self, path, bucket, key):
+        if not self.args.dryrun:
+            self.s3.upload_file(path, bucket, key)
+
+    def _upload_data(self, body, bucket, key, content_type):
+        if not self.args.dryrun:
+            self.s3.put_object(
                 Body=body,
-                Bucket=BUCKET,
+                Bucket=bucket,
                 Key=key,
                 ContentType=content_type)
 
-    def upload_file(file_name, key):
-        client = boto3.client('s3')
+    def png(self, image_name):
+        url = '{}/png/{}.png'.format(self.config['archive_url'], image_name)
+        logging.info('Downloading ' + url)
+        data = self._read_file_from_url(url)
+        filename = os.path.join(gettempdir(), image_name + '.png')
+        with open(filename, 'wb') as f:
+            f.write(data)
+        key = 'images/png/{}.png'.format(image_name)
+        logging.info(
+            'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
+        self._upload_file(filename, self.config['bucket'], key)
 
-        if not args.dryrun:
-            client.upload_file(file_name, BUCKET, key)
+    def jpgs(self, image_name):
+        for res in self.config['res']:
+            res_string = '{res}x{res}'.format(res=res)
+            infile = os.path.join(gettempdir(), image_name + '.png')
+            outfile = os.path.join(gettempdir(), image_name + '.jpg')
+            cmd = 'convert {} -resize {} {}'.format(
+                infile, res_string, outfile)
+            check_call(cmd, shell=True)
+            # compatibility hack
+            if res == '2048':
+                key = 'images/jpg/{}.jpg'.format(image_name)
+            # NASA thumbnail
+            elif res == '120':
+                key = 'images/thumbs/{}.jpg'.format(image_name)
+            else:
+                key = 'images/jpg/{}/{}.jpg'.format(res, image_name)
+            logging.info(
+                'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
+            self._upload_file(outfile, self.config['bucket'], key)
+            os.remove(outfile)
 
-    def process_images_in_list(image_list):
-        images = get_images_names_from_list(image_list)
-        failed_images = []
-        for image in images:
-            logging.info('image: {}'.format(image))
-            png = '{endpoint}/png/{image}.png'.format(
-                endpoint=ARCHIVE, image=image)
-            png_key = 'images/png/{image}.png'.format(image=image)
-            logging.info('png key: {}'.format(png_key))
-            png_data = get_image_data(png)
-            if png_data is None:
-                logging.info('Failed image download')
-                failed_images.append(image)
-                continue
-            base_name = os.path.abspath(
-                os.path.join(gettempdir(), image))
-            local_png_file_name = base_name + '.png'
-            local_jpg_file_name = base_name + '.jpg'
-            with open(local_png_file_name, 'wb') as f:
-                f.write(png_data.read())
-            for res in ['2048', '1024', '512', '256', '120']:
-                res_string = '{res}x{res}'.format(res=res)
-                cmd = 'convert {png} -resize {res} {jpg}'.format(
-                    png=local_png_file_name,
-                    res=res_string,
-                    jpg=local_jpg_file_name)
-                check_call(cmd, shell=True)
-                # compatibility hack
-                if res == '2048':
-                    jpg_key = 'images/jpg/{}.jpg'.format(image)
-                # NASA thumbnail
-                elif res == '120':
-                    jpg_key = 'images/thumbs/{}.jpg'.format(image)
-                else:
-                    jpg_key = 'images/jpg/{}/{}.jpg'.format(res, image)
-                logging.info('jpg key: {}'.format(jpg_key))
-                upload_file(local_jpg_file_name, jpg_key)
-                os.remove(local_jpg_file_name)
+    def bounding_shapes(self, image_name):
+        filename = os.path.join(gettempdir(), image_name + '.png')
+        im = cv2.imread(filename, 0)
+        height, width = im.shape
+        ret, thresh = cv2.threshold(im, 10, 255, cv2.THRESH_BINARY)
+        contours, hierarchy = cv2.findContours(
+            thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        area = 0
+        idx = 0
+        max_area = math.pi * (height / 2)**2
+        for index, item in enumerate(contours):
+            a = cv2.contourArea(item)
+            if a > area and a < max_area:
+                area = a
+                idx = index
+        cnt = contours[idx]
+        center, radius = cv2.minEnclosingCircle(cnt)
+        cx = center[0] / 2048
+        cy = center[1] / 2048
+        r = radius / 2048
+        logging.info('Circle center, radius: {}, {}'.format((cx, cy), r))
+        (ex, ey), (MA, ma), angle = cv2.fitEllipse(cnt)
+        points = cv2.ellipse2Poly(
+            (int(ex), int(ey)), (int(MA / 2), int(ma / 2)), int(angle), 0, 360, 1)
+        npoints = []
+        for point in random.sample(points, 5):
+            npoints.append((float(point[0]) / 2048, float(point[0]) / 2048))
+        cache = {
+            'jpg': {
+                    'earth_circle': {
+                        'center': {'x': cx, 'y': cy},
+                        'radius': r
+                    },
+                    'earth_ellipse': {'points': npoints}
+            },
+                'png': {
+                    'earth_circle': {
+                        'center': {'x': cx, 'y': cy},
+                        'radius': r
+                    },
+                    'earth_ellipse': {'points': npoints}
+                }
+        }
+        return cache
 
-            upload_file(local_png_file_name, png_key)
-            os.remove(local_png_file_name)
+    def run(self):
+        first = True
+        # start from the latest pictures.
+        dates = sorted(self.missing_dates(), reverse=True)
+        for date in dates:
+            images_json = self.image_list(date)
+            for image in images_json:
+                image_name = image['image']
+                self.png(image_name)
+                self.jpgs(image_name)
+                image['cache'] = self.bounding_shapes(image_name)
+                # delete png
+                os.remove(os.path.join(gettempdir(), image_name + '.png'))
+                # fix json coming from the api
+                image['coords'] = image['coords'].replace("'", '"')
+            # save latest date json to mirror
+            if first:
+                self._upload_data(
+                    json.dumps(images_json, indent=4),
+                    self.config['bucket'],
+                    self.config['latest_images_path'],
+                    'application/json')
+                self.invalidate_paths.append('/' + self.config['latest_images_path'])
+            first = False
+        self.invalidate()
 
-        return failed_images
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--full',
-        help='Sync all dates',
-        action='store_true')
-    parser.add_argument(
-        '--dryrun',
-        help='Not writing to mirror',
-        action='store_true')
-    parser.add_argument(
-        '--verbose',
-        help='Print debug messages',
-        action='store_true')
-    parser.add_argument(
-        '--dev',
-        help='Use dev bucket',
-        action='store_true')
-    args = parser.parse_args()
+def main():
+    def _parse_arguments():
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            '--full',
+            help='Full sync',
+            action='store_true')
+        parser.add_argument(
+            '--dryrun',
+            help='Not writing to mirror',
+            action='store_true')
+        parser.add_argument(
+            '--verbose',
+            help='Print debug messages',
+            action='store_true')
+        parser.add_argument(
+            '--dev',
+            help='Use dev bucket',
+            action='store_true')
+        return parser.parse_args()
 
-    if args.verbose:
-        logging.basicConfig(level=logging.INFO)
+    def _config(args):
+        if args.verbose:
+            logging.basicConfig(level=logging.INFO)
 
-    if args.dev:
-        BUCKET = 'dev.blueturn.earth'
-    else:
-        BUCKET = 'epic-archive-mirror'
+        config = {}
 
-    DISTRIBUTION_ID = 'E2NGB7E5BXXA9J'
-    API = 'http://epic.gsfc.nasa.gov/api'
-    ARCHIVE = 'http://epic.gsfc.nasa.gov/epic-archive'
-    AVAILABLE_DATES_PATH_ON_MIRROR = 'images/available_dates.json'
-    LATEST_IMAGES_PATH_ON_MIRROR = 'images/images_latest.json'
-    RETRIES = 5
-    DAYS_TRACK_CHANGES = 14
-
-    files_to_invalidate = []
-
-    dates = get_available_dates()
-    dates_on_mirror = get_json_file_from_mirror(AVAILABLE_DATES_PATH_ON_MIRROR)
-    if dates_on_mirror != dates:
-        upload_data(
-            json.dumps(dates,
-                       indent=4),
-            AVAILABLE_DATES_PATH_ON_MIRROR)
-        files_to_invalidate.append('/' + AVAILABLE_DATES_PATH_ON_MIRROR)
-
-    first_iteration = True
-    for date in dates:
-        logging.info('date: {}'.format(date))
-        if not args.full and too_old_to_sync(date):
-            break
-
-        daily_image_list_from_archive = get_mirror_list_by_date(date)
-        daily_image_list_from_api = get_list_by_date(date)
-
-        list_of_images_to_download = []
-        daily_image_list_to_archive = daily_image_list_from_api
-        if args.full or daily_image_list_from_archive is None:
-            logging.info('New list')
-            list_of_images_to_download = daily_image_list_from_api
+        if args.dev:
+            config['bucket'] = 'dev.blueturn.earth'
         else:
-            logging.info('Existing list')
-            archive_names = set(
-                get_images_names_from_list(daily_image_list_from_archive))
-            api_names = set(
-                get_images_names_from_list(daily_image_list_from_api))
-            new_images = api_names - archive_names
-            for new_image in new_images:
-                new_image_key = next(
-                    (item for item in daily_image_list_from_api if item['image'] == new_image), None)
-                new_image_key['new'] = True
-                list_of_images_to_download.append(new_image_key)
-            daily_image_list_to_archive = daily_image_list_from_archive + \
-                list_of_images_to_download
+            config['bucket'] = 'epic-archive-mirror'
 
-        if len(list_of_images_to_download) > 0:
-            failed_images = process_images_in_list(list_of_images_to_download)
-            for item in list(daily_image_list_to_archive):
-                # remove failed images from list
-                if item['image'] in failed_images:
-                    daily_image_list_to_archive.remove(item)
-                else:
-                    # fix coords single to double quotes
-                    item['coords'] = item['coords'].replace("'", '"')
-            logging.info('New images')
-            list_path = 'images/list/images_{date}.json'.format(date=date)
-            list_content = sorted(
-                daily_image_list_to_archive,
-                key=itemgetter('date'))
-            upload_data(json.dumps(list_content, indent=4), list_path)
-            files_to_invalidate.append('/' + list_path)
-            if first_iteration:
-                upload_data(
-                    json.dumps(list_content, indent=4), LATEST_IMAGES_PATH_ON_MIRROR)
-                files_to_invalidate.append('/' + LATEST_IMAGES_PATH_ON_MIRROR)
+        config['distribution_id'] = 'E2NGB7E5BXXA9J'
+        base_url = 'http://epic.gsfc.nasa.gov'
+        config['api_url'] = base_url + '/api'
+        config['archive_url'] = base_url + '/epic-archive'
+        config['available_dates_path'] = 'images/available_dates.json'
+        config['latest_images_path'] = 'images/images_latest.json'
+        config['retries'] = 5
+        config['res'] = ['2048', '1024', '512', '256', '120']
+        return config
 
-        first_iteration = False
+    args = _parse_arguments()
+    config = _config(args)
 
-    if len(files_to_invalidate) > 0:
-        invalidate_files(files_to_invalidate)
+    epic = Epic(args, config)
+    epic.run()
 
 
 if __name__ == '__main__':
