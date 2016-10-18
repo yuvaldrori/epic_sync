@@ -221,11 +221,11 @@ def main():
         logging.basicConfig(level=logging.INFO)
 
     if args.dev:
-        BUCKET = 'dev.blueturn.earth'
+        BUCKET = 'blueturn-content-dev'
     else:
-        BUCKET = 'epic-archive-mirror'
+        BUCKET = 'blueturn-content'
 
-    DISTRIBUTION_ID = 'E2NGB7E5BXXA9J'
+    DISTRIBUTION_ID = 'E21HG4M80KUJI5'
     API = 'http://epic.gsfc.nasa.gov/api'
     ARCHIVE = 'http://epic.gsfc.nasa.gov/epic-archive'
     AVAILABLE_DATES_PATH_ON_MIRROR = 'images/available_dates.json'
