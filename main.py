@@ -237,11 +237,11 @@ def main():
         config = {}
 
         if args.dev:
-            config['bucket'] = 'dev.blueturn.earth'
+            config['bucket'] = 'blueturn-content-dev'
         else:
-            config['bucket'] = 'epic-archive-mirror'
+            config['bucket'] = 'blueturn-content'
 
-        config['distribution_id'] = 'E2NGB7E5BXXA9J'
+        config['distribution_id'] = 'E21HG4M80KUJI5'
         base_url = 'http://epic.gsfc.nasa.gov'
         config['api_url'] = base_url + '/api'
         config['archive_url'] = base_url + '/epic-archive'
