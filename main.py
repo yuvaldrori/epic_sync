@@ -142,7 +142,7 @@ class Epic:
         im = cv2.imread(filename, 0)
         height, width = im.shape
         ret, thresh = cv2.threshold(im, 10, 255, cv2.THRESH_BINARY)
-        contours, hierarchy = cv2.findContours(
+        im2, contours, hierarchy = cv2.findContours(
             thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         area = 0
         idx = 0
