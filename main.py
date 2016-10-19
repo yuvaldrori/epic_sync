@@ -65,6 +65,21 @@ class Epic:
         except:
             return None
 
+    def dates_completed(self):
+        ret = []
+        suffix = '.json'
+        kwargs = {'Bucket': self.config['bucket'], 'Prefix': 'images/list/images_'}
+        continuation_token = ''
+        while True:
+            if continuation_token != '':
+                kwargs['ContinuationToken'] = continuation_token
+            response = self.s3.list_objects_v2(**kwargs)
+            ret += [d['Key'][len(kwargs['Prefix']):-len(suffix)] for d in response['Contents']]
+            if response['IsTruncated']:
+                continuation_token = response['NextContinuationToken']
+            else:
+                return sorted(ret)
+
     def missing_dates(self):
         ret = []
         url = self.config['api_url'] + '/images.php?available_dates'
@@ -78,13 +93,6 @@ class Epic:
                 self.config['available_dates_path'])
             dates_from_mirror = self._read_json(data)
             ret = sorted(set(dates_from_api) - set(dates_from_mirror))
-        if len(ret) > 0:
-            self._upload_data(
-                json.dumps(dates_from_api, indent=4),
-                self.config['bucket'],
-                self.config['available_dates_path'],
-                'application/json')
-            self.invalidate_paths.append('/' + self.config['available_dates_path'])
         return ret
 
     def image_list(self, date):
@@ -205,7 +213,13 @@ class Epic:
                     self.config['latest_images_path'],
                     'application/json')
                 self.invalidate_paths.append('/' + self.config['latest_images_path'])
+                self.invalidate_paths.append('/' + self.config['available_dates_path'])
             first = False
+            self._upload_data(
+                json.dumps(dates_completed(), indent=4),
+                self.config['bucket'],
+                self.config['available_dates_path'],
+                'application/json')
         self.invalidate()
 
 
