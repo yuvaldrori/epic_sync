@@ -216,7 +216,7 @@ class Epic:
                 self.invalidate_paths.append('/' + self.config['available_dates_path'])
             first = False
             self._upload_data(
-                json.dumps(dates_completed(), indent=4),
+                json.dumps(self.dates_completed(), indent=4),
                 self.config['bucket'],
                 self.config['available_dates_path'],
                 'application/json')
