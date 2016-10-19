@@ -68,13 +68,16 @@ class Epic:
     def dates_completed(self):
         ret = []
         suffix = '.json'
-        kwargs = {'Bucket': self.config['bucket'], 'Prefix': 'images/list/images_'}
+        kwargs = {
+            'Bucket': self.config['bucket'],
+            'Prefix': 'images/list/images_'}
         continuation_token = ''
         while True:
             if continuation_token != '':
                 kwargs['ContinuationToken'] = continuation_token
             response = self.s3.list_objects_v2(**kwargs)
-            ret += [d['Key'][len(kwargs['Prefix']):-len(suffix)] for d in response['Contents']]
+            ret += [d['Key'][len(kwargs['Prefix']):-len(suffix)]
+                    for d in response['Contents']]
             if response['IsTruncated']:
                 continuation_token = response['NextContinuationToken']
             else:
@@ -167,26 +170,26 @@ class Epic:
         r = radius / 2048
         logging.info('Circle center, radius: {}, {}'.format((cx, cy), r))
         (ex, ey), (MA, ma), angle = cv2.fitEllipse(cnt)
-        points = cv2.ellipse2Poly(
-            (int(ex), int(ey)), (int(MA / 2), int(ma / 2)), int(angle), 0, 360, 1)
+        points = cv2.ellipse2Poly((int(ex), int(ey)), (int(
+            MA / 2), int(ma / 2)), int(angle), 0, 360, 1)
         npoints = []
         for point in random.sample(points, 5):
             npoints.append((float(point[0]) / 2048, float(point[0]) / 2048))
         cache = {
             'jpg': {
-                    'earth_circle': {
-                        'center': {'x': cx, 'y': cy},
-                        'radius': r
-                    },
-                    'earth_ellipse': {'points': npoints}
+                'earth_circle': {
+                    'center': {'x': cx, 'y': cy},
+                    'radius': r
+                },
+                'earth_ellipse': {'points': npoints}
             },
-                'png': {
-                    'earth_circle': {
-                        'center': {'x': cx, 'y': cy},
-                        'radius': r
-                    },
-                    'earth_ellipse': {'points': npoints}
-                }
+            'png': {
+                'earth_circle': {
+                    'center': {'x': cx, 'y': cy},
+                    'radius': r
+                },
+                'earth_ellipse': {'points': npoints}
+            }
         }
         return cache
 
@@ -212,9 +215,16 @@ class Epic:
                     self.config['bucket'],
                     self.config['latest_images_path'],
                     'application/json')
-                self.invalidate_paths.append('/' + self.config['latest_images_path'])
-                self.invalidate_paths.append('/' + self.config['available_dates_path'])
+                self.invalidate_paths.append(
+                    '/' + self.config['latest_images_path'])
+                self.invalidate_paths.append(
+                    '/' + self.config['available_dates_path'])
             first = False
+            self._upload_data(
+                json.dumps(images_json, indent=4),
+                self.config['bucket'],
+                'images/list/images_{date}.json'.format(date=date),
+                'application/json')
             self._upload_data(
                 json.dumps(self.dates_completed(), indent=4),
                 self.config['bucket'],
