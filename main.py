@@ -51,12 +51,14 @@ class Epic:
         return None
 
     def _read_file_from_url(self, url):
-        try:
-            data = urllib2.urlopen(url)
-            if data.code == 200:
-                return data.read()
-        except:
-            logging.info('error reading file from ' + url)
+        for i in range(self.config['retries']):
+            try:
+                data = urllib2.urlopen(url)
+                if data.code == 200:
+                    return data.read()
+            except:
+                sleep(1)
+        logging.info('error reading file from ' + url)
         return None
 
     def _read_json(self, data):
