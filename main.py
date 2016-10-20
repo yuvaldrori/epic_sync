@@ -11,7 +11,7 @@ import cv2
 import math
 import random
 import sys
-from time import time
+from time import time, sleep
 
 
 class Epic:
