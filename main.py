@@ -235,46 +235,41 @@ class Epic:
         self.invalidate()
 
     def sample(self):
-        from dateutil.parser import parse
-        url = self.config['api_url'] + '/images.php?available_dates'
-        data = self._read_file_from_url(url)
-        dates = self._read_json(data)
-        prev_m = 0
-        for date in dates:
-            d = parse(date)
-            m = d.month
-            if prev_m == m:
-                continue
-            else:
-               prev_m = m
-            images_json = self.image_list(date)
-            image_name = images_json[0]['image']
-            url = '{}/png/{}.png'.format(self.config['archive_url'], image_name)
-            logging.info('Downloading ' + url)
-            data = self._read_file_from_url(url)
-            filename = os.path.join('samples', image_name + '.png')
-            with open(filename, 'wb') as f:
-                f.write(data)
-            im = cv2.imread(filename, 0)
-            imo = cv2.imread(filename)
-            height, width = im.shape
-            ret, thresh = cv2.threshold(im, 10, 255, cv2.THRESH_BINARY)
-            im2, contours, hierarchy = cv2.findContours(
-                thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            area = 0
-            idx = 0
-            max_area = math.pi * (height / 2)**2
-            for index, item in enumerate(contours):
-                a = cv2.contourArea(item)
-                if a > area and a < max_area:
-                    area = a
-                    idx = index
-            cnt = contours[idx]
-            (x, y), radius = cv2.minEnclosingCircle(cnt)
-            cv2.circle(imo, (int(x), int(y)), int(radius), (0, 255, 0), 1)
-            (ex, ey), (MA, ma), angle = cv2.fitEllipse(cnt)
-            cv2.ellipse(imo, (int(ex), int(ey)), (int(MA)/2, int(ma)/2), angle, 0, 360, (0, 0, 255), 1)
-            cv2.imwrite(filename, imo)
+        filename = os.path.join('samples', 'epic_1b_20160705042828_01' + '.png')
+        filename2 = os.path.join('samples', 'out' + '.png')
+        filename3 = os.path.join('samples', 'out2' + '.png')
+        im = cv2.imread(filename, 0)
+        height, width = im.shape
+        ret, thresh = cv2.threshold(im, 10, 255, cv2.THRESH_BINARY)
+        im2, contours, hierarchy = cv2.findContours(
+            thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        area = 0
+        idx = 0
+        max_area = math.pi * (height / 2)**2
+        for index, item in enumerate(contours):
+            a = cv2.contourArea(item)
+            if a > area and a < max_area:
+                area = a
+                idx = index
+        cnt = contours[idx]
+        cont = np.zeros((2048,2048,1), np.uint8)
+        cv2.drawContours(cont, [cnt], -1, (255,255,255), -1)
+        # detect circles in the image
+        circles = cv2.HoughCircles(cont, cv2.HOUGH_GRADIENT, 1, 1)
+ 
+# ensure at least some circles were found
+        if circles is not None:
+	# convert the (x, y) coordinates and radius of the circles to integers
+            circles = np.round(circles[0, :]).astype("int")
+ 
+	# loop over the (x, y) coordinates and radius of the circles
+            for (x, y, r) in circles:
+		# draw the circle in the output image, then draw a rectangle
+		# corresponding to the center of the circle
+                cv2.circle(cont, (x, y), r, (127, 127, 127), 1)
+            cv2.imwrite(filename2, cont)
+        else:
+            print 'blah'
 
 
 def main():
