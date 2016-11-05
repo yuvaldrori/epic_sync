@@ -3,6 +3,7 @@ import urllib2
 import logging
 import json
 import boto3
+import botocore
 import os
 from tempfile import gettempdir
 from subprocess import check_call
@@ -97,12 +98,30 @@ class Epic:
                 self.config['bucket'],
                 self.config['available_dates_path'])
             dates_from_mirror = self._read_json(data)
-            ret = sorted(set(dates_from_api) - set(dates_from_mirror))
+            if dates_from_mirror is None:
+                dates_from_mirror = self.dates_completed()
+            missing_dates = set(dates_from_api) - set(dates_from_mirror)
+            union_dates = set(dates_from_api) | set(dates_from_mirror)
+            for date in union_dates:
+                num_images_api = len(self.image_list(date))
+                num_images_archive = len(self.image_list_mirror(date))
+                if num_images_api != num_images_archive:
+                    logging.info(
+                        'At date: {}, api: {}, arch: {}'.format(
+                            date, num_images_api, num_images_archive))
+                    missing_dates.add(date)
+            ret = sorted(missing_dates)
         return ret
 
     def image_list(self, date):
         url = '{}/images.php?date={}'.format(self.config['api_url'], date)
         data = self._read_file_from_url(url)
+        return self._read_json(data)
+
+    def image_list_mirror(self, date):
+        bucket = self.config['bucket']
+        key = 'images/list/images_{date}.json'.format(date=date)
+        data = self._read_file_from_mirror(bucket, key)
         return self._read_json(data)
 
     def _upload_file(self, path, bucket, key):
@@ -200,9 +219,12 @@ class Epic:
         # start from the latest pictures.
         dates = sorted(self.missing_dates(), reverse=True)
         for date in dates:
+            logging.info('Working on date: ' + date)
             images_json = self.image_list(date)
+            logging.info('Read json with {} images'.format(len(images_json)))
             for image in images_json:
                 image_name = image['image']
+                logging.info('Working on image: ' + image_name)
                 self.png(image_name)
                 self.jpgs(image_name)
                 image['cache'] = self.bounding_shapes(image_name)
@@ -212,6 +234,7 @@ class Epic:
                 image['coords'] = image['coords'].replace("'", '"')
             # save latest date json to mirror
             if first:
+                logging.info('This is the first date')
                 self._upload_data(
                     json.dumps(images_json, indent=4),
                     self.config['bucket'],
@@ -222,6 +245,9 @@ class Epic:
                 self.invalidate_paths.append(
                     '/' + self.config['available_dates_path'])
             first = False
+            logging.info(
+                'Uploading json with {} images'.format(
+                    len(images_json)))
             self._upload_data(
                 json.dumps(images_json, indent=4),
                 self.config['bucket'],
