@@ -21,11 +21,11 @@ class Epic:
         self.args = args
         self.config = config
         self.s3 = boto3.client('s3')
-        self.invalidate_paths = []
+        self.invalidate_paths = set()
 
     def invalidate(self):
         if not self.args.dryrun and len(self.invalidate_paths) > 0:
-            paths = self.invalidate_paths
+            paths = list(self.invalidate_paths)
             client = boto3.client('cloudfront')
             response = client.create_invalidation(
                 DistributionId=self.config['distribution_id'],
@@ -94,15 +94,11 @@ class Epic:
         if self.args.full:
             ret = dates_from_api
         else:
-            data = self._read_file_from_mirror(
-                self.config['bucket'],
-                self.config['available_dates_path'])
-            dates_from_mirror = self._read_json(data)
-            if dates_from_mirror is None:
-                dates_from_mirror = self.dates_completed()
+            dates_from_mirror = self.dates_completed()
             missing_dates = set(dates_from_api) - set(dates_from_mirror)
-            union_dates = set(dates_from_api) | set(dates_from_mirror)
-            for date in union_dates:
+            common_dates = set(dates_from_api) & set(dates_from_mirror)
+            for date in common_dates:
+                logging.info('len for date: ' + date)
                 num_images_api = len(self.image_list(date))
                 num_images_archive = len(self.image_list_mirror(date))
                 if num_images_api != num_images_archive:
@@ -110,7 +106,7 @@ class Epic:
                         'At date: {}, api: {}, arch: {}'.format(
                             date, num_images_api, num_images_archive))
                     missing_dates.add(date)
-            ret = sorted(missing_dates)
+            ret = sorted(missing_dates, reverse=True)
         return ret
 
     def image_list(self, date):
@@ -135,6 +131,16 @@ class Epic:
                 Bucket=bucket,
                 Key=key,
                 ContentType=content_type)
+
+    def set_latest_date(self, date):
+        source = {
+            'bucket': self.config['bucket'],
+            'key': 'images/list/images_{date}.json'.format(date=date)
+        }
+        bucket = self.config['bucket']
+        key = self.config['latest_images_path']
+        if not self.args.dryrun:
+            self.s3.copy_object(Bucket=bucket, Key=key, CopySource=source)
 
     def png(self, image_name):
         url = '{}/png/{}.png'.format(self.config['archive_url'], image_name)
@@ -215,9 +221,7 @@ class Epic:
         return cache
 
     def run(self):
-        first = True
-        # start from the latest pictures.
-        dates = sorted(self.missing_dates(), reverse=True)
+        dates = self.missing_dates()
         for date in dates:
             logging.info('Working on date: ' + date)
             images_json = self.image_list(date)
@@ -232,19 +236,6 @@ class Epic:
                 os.remove(os.path.join(gettempdir(), image_name + '.png'))
                 # fix json coming from the api
                 image['coords'] = image['coords'].replace("'", '"')
-            # save latest date json to mirror
-            if first:
-                logging.info('This is the first date')
-                self._upload_data(
-                    json.dumps(images_json, indent=4),
-                    self.config['bucket'],
-                    self.config['latest_images_path'],
-                    'application/json')
-                self.invalidate_paths.append(
-                    '/' + self.config['latest_images_path'])
-                self.invalidate_paths.append(
-                    '/' + self.config['available_dates_path'])
-            first = False
             logging.info(
                 'Uploading json with {} images'.format(
                     len(images_json)))
@@ -253,11 +244,17 @@ class Epic:
                 self.config['bucket'],
                 'images/list/images_{date}.json'.format(date=date),
                 'application/json')
+            lists = self.dates_completed()
             self._upload_data(
-                json.dumps(self.dates_completed(), indent=4),
+                json.dumps(lists, indent=4),
                 self.config['bucket'],
                 self.config['available_dates_path'],
                 'application/json')
+            self.invalidate_paths.add(
+                '/' + self.config['available_dates_path'])
+            self.set_latest_date(lists[-1])
+            self.invalidate_paths.add(
+                '/' + self.config['latest_images_path'])
         self.invalidate()
 
 
