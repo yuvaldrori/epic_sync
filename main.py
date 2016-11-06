@@ -134,8 +134,8 @@ class Epic:
 
     def set_latest_date(self, date):
         source = {
-            'bucket': self.config['bucket'],
-            'key': 'images/list/images_{date}.json'.format(date=date)
+            'Bucket': self.config['bucket'],
+            'Key': 'images/list/images_{date}.json'.format(date=date)
         }
         bucket = self.config['bucket']
         key = self.config['latest_images_path']
