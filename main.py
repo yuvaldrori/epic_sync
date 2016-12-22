@@ -106,8 +106,8 @@ class Epic:
                         'At date: {}, api: {}, arch: {}'.format(
                             date, num_images_api, num_images_archive))
                     missing_dates.add(date)
-            ret = sorted(missing_dates, reverse=True)
-        return ret
+            ret = missing_dates
+        return sorted(ret, reverse=True)
 
     def image_list(self, date):
         url = '{}/images.php?date={}'.format(self.config['api_url'], date)
