@@ -63,10 +63,7 @@ class Epic:
         return None
 
     def _read_json(self, data):
-        try:
-            return json.loads(data)
-        except:
-            return None
+        return json.loads(data)
 
     def dates_completed(self):
         ret = []
