@@ -293,7 +293,7 @@ def main():
         config['archive_url'] = base_url + '/epic-archive'
         config['available_dates_path'] = 'images/available_dates.json'
         config['latest_images_path'] = 'images/images_latest.json'
-        config['retries'] = 5
+        config['retries'] = 10
         config['res'] = ['2048', '1024', '512', '256', '120']
         return config
 
