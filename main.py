@@ -70,14 +70,17 @@ class Epic:
         suffix = '.json'
         kwargs = {
             'Bucket': self.config['bucket'],
-            'Prefix': 'images/list/images_'}
+            'Prefix': '{}/list/images_'.format(self.config['images_folder'])}
         continuation_token = ''
         while True:
             if continuation_token != '':
                 kwargs['ContinuationToken'] = continuation_token
             response = self.s3.list_objects_v2(**kwargs)
-            ret += [d['Key'][len(kwargs['Prefix']):-len(suffix)]
-                    for d in response['Contents']]
+            if 'Contents' in response:
+                ret += [d['Key'][len(kwargs['Prefix']):-len(suffix)]
+                        for d in response['Contents']]
+            else:
+                return ret
             if response['IsTruncated']:
                 continuation_token = response['NextContinuationToken']
             else:
@@ -85,9 +88,11 @@ class Epic:
 
     def missing_dates(self):
         ret = []
-        url = self.config['api_url'] + '/images.php?available_dates'
+        url = self.config['api_url'] + '/all'
         data = self._read_file_from_url(url)
-        dates_from_api = self._read_json(data)
+        dates_from_api = []
+        for d in self._read_json(data):
+            dates_from_api.append(d['date'])
         if self.args.full:
             ret = dates_from_api
         else:
@@ -107,13 +112,14 @@ class Epic:
         return sorted(ret, reverse=True)
 
     def image_list(self, date):
-        url = '{}/images.php?date={}'.format(self.config['api_url'], date)
+        url = '{}/date/{}'.format(self.config['api_url'], date)
         data = self._read_file_from_url(url)
         return self._read_json(data)
 
     def image_list_mirror(self, date):
         bucket = self.config['bucket']
-        key = 'images/list/images_{date}.json'.format(date=date)
+        key = '{}/list/images_{}.json'.format(
+            self.config['images_folder'], date)
         data = self._read_file_from_mirror(bucket, key)
         return self._read_json(data)
 
@@ -132,21 +138,35 @@ class Epic:
     def set_latest_date(self, date):
         source = {
             'Bucket': self.config['bucket'],
-            'Key': 'images/list/images_{date}.json'.format(date=date)
+            'Key': '{}/list/images_{}.json'.format(
+                self.config['images_folder'], date)
         }
         bucket = self.config['bucket']
         key = self.config['latest_images_path']
         if not self.args.dryrun:
             self.s3.copy_object(Bucket=bucket, Key=key, CopySource=source)
 
+    def get_date_from_image_name(self, image_name):
+        date_part_from_name = image_name.split('_')[2]
+        year = date_part_from_name[:4]
+        month = date_part_from_name[4:6]
+        day = date_part_from_name[6:8]
+        return year, month, day
+
     def png(self, image_name):
-        url = '{}/png/{}.png'.format(self.config['archive_url'], image_name)
+        year, month, day = self.get_date_from_image_name(image_name)
+        url = '{archive_url}/{year}/{month}/{day}/png/{image}.png'.format(
+            archive_url=self.config['archive_url'],
+            year=year,
+            month=month,
+            day=day,
+            image=image_name)
         logging.info('Downloading ' + url)
         data = self._read_file_from_url(url)
         filename = os.path.join(gettempdir(), image_name + '.png')
         with open(filename, 'wb') as f:
             f.write(data)
-        key = 'images/png/{}.png'.format(image_name)
+        key = '{}/png/{}.png'.format(self.config['images_folder'], image_name)
         logging.info(
             'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
         self._upload_file(filename, self.config['bucket'], key)
@@ -161,12 +181,19 @@ class Epic:
             check_call(cmd, shell=True)
             # compatibility hack
             if res == '2048':
-                key = 'images/jpg/{}.jpg'.format(image_name)
+                key = '{}/jpg/{}.jpg'.format(
+                    self.config['images_folder'],
+                    image_name)
             # NASA thumbnail
             elif res == '120':
-                key = 'images/thumbs/{}.jpg'.format(image_name)
+                key = '{}/thumbs/{}.jpg'.format(
+                    self.config['images_folder'],
+                    image_name)
             else:
-                key = 'images/jpg/{}/{}.jpg'.format(res, image_name)
+                key = '{}/jpg/{}/{}.jpg'.format(
+                    self.config['images_folder'],
+                    res,
+                    image_name)
             logging.info(
                 'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
             self._upload_file(outfile, self.config['bucket'], key)
@@ -239,7 +266,9 @@ class Epic:
             self._upload_data(
                 json.dumps(images_json, indent=4),
                 self.config['bucket'],
-                'images/list/images_{date}.json'.format(date=date),
+                '{}/list/images_{}.json'.format(
+                    self.config['images_folder'],
+                    date),
                 'application/json')
             lists = self.dates_completed()
             self._upload_data(
@@ -274,6 +303,10 @@ def main():
             '--dev',
             help='Use dev bucket',
             action='store_true')
+        parser.add_argument(
+            '--enhanced',
+            help='Sync enhanced images',
+            action='store_true')
         return parser.parse_args()
 
     def _config(args):
@@ -289,11 +322,21 @@ def main():
 
         config['distribution_id'] = 'E21HG4M80KUJI5'
         base_url = 'http://epic.gsfc.nasa.gov'
-        config['api_url'] = base_url + '/api'
-        config['archive_url'] = base_url + '/epic-archive'
-        config['available_dates_path'] = 'images/available_dates.json'
-        config['latest_images_path'] = 'images/images_latest.json'
-        config['retries'] = 10
+        if args.enhanced:
+            config['api_url'] = base_url + '/api/enhanced'
+            config['archive_url'] = base_url + '/archive/enhanced'
+            config['images_folder'] = 'enhanced_images'
+            config[
+                'available_dates_path'] = 'enhanced_images/available_dates.json'
+            config['latest_images_path'] = 'enhanced_images/images_latest.json'
+        else:
+            config['api_url'] = base_url + '/api/natural'
+            config['archive_url'] = base_url + '/archive/natural'
+            config['images_folder'] = 'images'
+            config['available_dates_path'] = 'images/available_dates.json'
+            config['latest_images_path'] = 'images/images_latest.json'
+
+        config['retries'] = 5
         config['res'] = ['2048', '1024', '512', '256', '120']
         return config
 
