@@ -250,37 +250,42 @@ class Epic:
             logging.info('Working on date: ' + date)
             images_json = self.image_list(date)
             logging.info('Read json with {} images'.format(len(images_json)))
-            for image in images_json:
-                image_name = image['image']
-                logging.info('Working on image: ' + image_name)
-                self.png(image_name)
-                self.jpgs(image_name)
-                image['cache'] = self.bounding_shapes(image_name)
-                # delete png
-                os.remove(os.path.join(gettempdir(), image_name + '.png'))
-                # fix json coming from the api
-                image['coords'] = image['coords'].replace("'", '"')
-            logging.info(
-                'Uploading json with {} images'.format(
-                    len(images_json)))
-            self._upload_data(
-                json.dumps(images_json, indent=4),
-                self.config['bucket'],
-                '{}/list/images_{}.json'.format(
-                    self.config['images_folder'],
-                    date),
-                'application/json')
-            lists = self.dates_completed()
-            self._upload_data(
-                json.dumps(lists, indent=4),
-                self.config['bucket'],
-                self.config['available_dates_path'],
-                'application/json')
-            self.invalidate_paths.add(
-                '/' + self.config['available_dates_path'])
-            self.set_latest_date(lists[-1])
-            self.invalidate_paths.add(
-                '/' + self.config['latest_images_path'])
+            try:
+                for image in images_json:
+                    image_name = image['image']
+                    logging.info('Working on image: ' + image_name)
+                    self.png(image_name)
+                    self.jpgs(image_name)
+                    image['cache'] = self.bounding_shapes(image_name)
+                    # delete png
+                    os.remove(os.path.join(gettempdir(), image_name + '.png'))
+                    # fix json coming from the api
+                    image['coords'] = image['coords'].replace("'", '"')
+                logging.info(
+                    'Uploading json with {} images'.format(
+                        len(images_json)))
+                self._upload_data(
+                    json.dumps(images_json, indent=4),
+                    self.config['bucket'],
+                    '{}/list/images_{}.json'.format(
+                        self.config['images_folder'],
+                        date),
+                    'application/json')
+                lists = self.dates_completed()
+                self._upload_data(
+                    json.dumps(lists, indent=4),
+                    self.config['bucket'],
+                    self.config['available_dates_path'],
+                    'application/json')
+                self.invalidate_paths.add(
+                    '/' + self.config['available_dates_path'])
+                self.set_latest_date(lists[-1])
+                self.invalidate_paths.add(
+                    '/' + self.config['latest_images_path'])
+            except:
+                logging.info(
+                    'Skipped date: {} because of an error.'.format(date))
+                continue
         self.invalidate()
 
 
