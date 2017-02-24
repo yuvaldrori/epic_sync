@@ -221,6 +221,14 @@ class Epic:
         r = radius / 2048
         logging.info('Circle center, radius: {}, {}'.format((cx, cy), r))
         (ex, ey), (MA, ma), angle = cv2.fitEllipse(cnt)
+
+        if self.args.debug:
+            im2 = cv2.imread(filename)
+            cv2.circle(im2, (int(center[0]), int(center[1])), int(radius), (255, 255, 255), 4)
+            cv2.ellipse(im2, ((ex, ey), (MA, ma), angle), (0, 0, 255), 4)
+            cv2.drawContours(im2, contours, idx, (0, 255, 0), 4)
+            cv2.imwrite(os.path.join(gettempdir(), '_debug_' + image_name + '.png'), im2)
+
         points = cv2.ellipse2Poly((int(ex), int(ey)), (int(
             MA / 2), int(ma / 2)), int(angle), 0, 360, 1)
         npoints = []
@@ -311,6 +319,10 @@ def main():
         parser.add_argument(
             '--enhanced',
             help='Sync enhanced images',
+            action='store_true')
+        parser.add_argument(
+            '--debug',
+            help='Save debug images',
             action='store_true')
         return parser.parse_args()
 
