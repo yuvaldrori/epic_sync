@@ -233,7 +233,7 @@ class Epic:
             MA / 2), int(ma / 2)), int(angle), 0, 360, 1)
         npoints = []
         for point in random.sample(points, 5):
-            npoints.append((float(point[0]) / 2048, float(point[0]) / 2048))
+            npoints.append((float(point[0]) / 2048, float(point[1]) / 2048))
         cache = {
             'jpg': {
                 'earth_circle': {
