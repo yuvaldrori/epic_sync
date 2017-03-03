@@ -221,35 +221,45 @@ class Epic:
         r = radius / 2048
         logging.info('Circle center, radius: {}, {}'.format((cx, cy), r))
         (ex, ey), (MA, ma), angle = cv2.fitEllipse(cnt)
+        ex_norm = ex / 2048
+        ey_norm = ey / 2048
+        e_width = MA / 2048
+        e_hight = ma / 2048
 
         if self.args.debug:
             im2 = cv2.imread(filename)
-            cv2.circle(im2, (int(center[0]), int(center[1])), int(radius), (255, 255, 255), 4)
+            cv2.circle(
+                im2,
+                (int(center[0]),
+                 int(center[1])),
+                int(radius),
+                (255,
+                 255,
+                 255),
+                4)
             cv2.ellipse(im2, ((ex, ey), (MA, ma), angle), (0, 0, 255), 4)
             cv2.drawContours(im2, contours, idx, (0, 255, 0), 4)
-            cv2.imwrite(os.path.join(gettempdir(), '_debug_' + image_name + '.png'), im2)
+            cv2.imwrite(
+                os.path.join(gettempdir(),
+                             '_debug_' + image_name + '.png'),
+                im2)
 
-        points = cv2.ellipse2Poly((int(ex), int(ey)), (int(
-            MA / 2), int(ma / 2)), int(angle), 0, 360, 1)
-        npoints = []
-        for point in random.sample(points, 5):
-            npoints.append((float(point[0]) / 2048, float(point[1]) / 2048))
-        cache = {
-            'jpg': {
-                'earth_circle': {
+        dimensions = {
+            'earth_circle': {
                     'center': {'x': cx, 'y': cy},
                     'radius': r
-                },
-                'earth_ellipse': {'points': npoints}
             },
-            'png': {
-                'earth_circle': {
-                    'center': {'x': cx, 'y': cy},
-                    'radius': r
-                },
-                'earth_ellipse': {'points': npoints}
-            }
+                'earth_ellipse': {
+                    'center': {'x': ex_norm, 'y': ey_norm},
+                    'size': {'width': e_width, 'hight': e_hight},
+                    'angle': angle
+                }
         }
+        cache = {
+            'jpg': dimensions,
+            'png': dimensions
+        }
+        logging.info('cache: {}'.format(json.dumps(cache, indent=4)))
         return cache
 
     def run(self):
@@ -287,12 +297,13 @@ class Epic:
                     'application/json')
                 self.invalidate_paths.add(
                     '/' + self.config['available_dates_path'])
-                self.set_latest_date(lists[-1])
-                self.invalidate_paths.add(
-                    '/' + self.config['latest_images_path'])
-            except:
+                if not self.args.full:
+                    self.set_latest_date(lists[-1])
+                    self.invalidate_paths.add(
+                        '/' + self.config['latest_images_path'])
+            except Exception as e:
                 logging.info(
-                    'Skipped date: {} because of an error.'.format(date))
+                    'Skipped date: {} because of an error: {}'.format(date, e.message))
                 continue
         self.invalidate()
 
