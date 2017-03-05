@@ -10,9 +10,9 @@ from subprocess import check_call
 import numpy as np
 import cv2
 import math
-import random
-import sys
 from time import time, sleep
+import csv
+from datetime import datetime
 
 
 class Epic:
@@ -199,8 +199,29 @@ class Epic:
             self._upload_file(outfile, self.config['bucket'], key)
             os.remove(outfile)
 
-    def bounding_shapes(self, image_name):
-        filename = os.path.join(gettempdir(), image_name + '.png')
+    def _boxPoints(self, ellipse):
+        angle = ellipse[2]
+        center = ellipse[0]
+        size = ellipse[1]
+
+        _angle = angle * np.pi / 180.
+        b = np.cos(_angle) * 0.5
+        a = np.sin(_angle) * 0.5
+
+        v0 = (
+            center[0] - a * size[1] - b * size[0],
+            center[1] + b * size[1] - a * size[0])
+        v1 = (
+            center[0] + a * size[1] - b * size[0],
+            center[1] - b * size[1] - a * size[0])
+        v2 = (2 * center[0] - v0[0], 2 * center[1] - v0[1])
+        v3 = (2 * center[0] - v1[0], 2 * center[1] - v1[1])
+
+        vertices = [v0, v1, v2, v3]
+
+        return vertices
+
+    def _get_earth_contour(self, filename):
         im = cv2.imread(filename, 0)
         height, width = im.shape
         ret, thresh = cv2.threshold(im, 10, 255, cv2.THRESH_BINARY)
@@ -208,77 +229,160 @@ class Epic:
             thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         area = 0
         idx = 0
-        max_area = math.pi * (height / 2)**2
+        max_area = math.pi * (height / 2) ** 2
         for index, item in enumerate(contours):
             a = cv2.contourArea(item)
-            if a > area and a < max_area:
+            if area < a < max_area:
                 area = a
                 idx = index
         cnt = contours[idx]
-        center, radius = cv2.minEnclosingCircle(cnt)
+        return cnt
+
+    def _create_debug_image(
+        self,
+        image_name,
+     filename,
+     contour,
+     circle,
+     ellipse):
+        line_width = 1
+        white = (255, 255, 255)
+        blue = (255, 0, 0)
+        green = (0, 255, 0)
+        red = (0, 0, 255)
+        im2 = cv2.imread(filename)
+        center = circle[0]
+        radius = circle[1]
+        cv2.circle(
+            im2,
+            (int(center[0]),
+             int(center[1])),
+            int(radius),
+            white,
+            line_width)
+        # main cross
+        cv2.line(im2, (0, 2048 / 2), (2048, 2048 / 2), white, line_width)
+        cv2.line(im2, (2048 / 2, 0), (2048 / 2, 2048), white, line_width)
+        # ellipse cross
+        box_points = self._boxPoints(ellipse)
+        cv2.line(im2, (int(box_points[0][0]), int(box_points[0][1])), (
+            int(box_points[2][0]), int(box_points[2][1])), blue, line_width)
+        cv2.line(im2, (int(box_points[1][0]), int(box_points[1][1])), (
+            int(box_points[3][0]), int(box_points[3][1])), blue, line_width)
+        #
+        cv2.ellipse(im2, ellipse, red, line_width)
+        cv2.drawContours(im2, (contour), 0, green, line_width)
+        debug_file = os.path.join(
+            gettempdir(),
+            '_debug_' + image_name + '.png')
+        cv2.imwrite(debug_file, im2)
+        key = '{}/debug/{}'.format(
+            self.config['images_folder'],
+            image_name + '.png')
+        self._upload_file(debug_file, self.config['bucket'], key)
+
+    def _write_dimensions(self, circle, ellipse):
+        center, radius = circle
         cx = center[0] / 2048
         cy = center[1] / 2048
         r = radius / 2048
-        logging.info('Circle center, radius: {}, {}'.format((cx, cy), r))
-        (ex, ey), (MA, ma), angle = cv2.fitEllipse(cnt)
+
+        (ex, ey), (MA, ma), angle = ellipse
         ex_norm = ex / 2048
         ey_norm = ey / 2048
         e_width = MA / 2048
-        e_hight = ma / 2048
-
-        if self.args.debug:
-            im2 = cv2.imread(filename)
-            cv2.circle(
-                im2,
-                (int(center[0]),
-                 int(center[1])),
-                int(radius),
-                (255,
-                 255,
-                 255),
-                4)
-            cv2.ellipse(im2, ((ex, ey), (MA, ma), angle), (0, 0, 255), 4)
-            cv2.drawContours(im2, contours, idx, (0, 255, 0), 4)
-            cv2.imwrite(
-                os.path.join(gettempdir(),
-                             '_debug_' + image_name + '.png'),
-                im2)
+        e_height = ma / 2048
 
         dimensions = {
             'earth_circle': {
-                    'center': {'x': cx, 'y': cy},
-                    'radius': r
+                'center': {'x': cx, 'y': cy},
+                'radius': r
             },
-                'earth_ellipse': {
-                    'center': {'x': ex_norm, 'y': ey_norm},
-                    'size': {'width': e_width, 'hight': e_hight},
-                    'angle': angle
-                }
+            'earth_ellipse': {
+                'center': {'x': ex_norm, 'y': ey_norm},
+                'size': {'width': e_width, 'height': e_height},
+                'angle': angle
+            }
         }
+
+        logging.info('dimensions: {}'.format(json.dumps(dimensions, indent=4)))
+        return dimensions
+
+    def bounding_shapes(self, image_name):
+        filename = os.path.join(gettempdir(), image_name + '.png')
+        contour = self._get_earth_contour(filename)
+        circle = cv2.minEnclosingCircle(contour)
+        ellipse = cv2.fitEllipse(contour)
+
+        self._create_debug_image(
+            image_name,
+            filename,
+            contour,
+            circle,
+            ellipse)
+
+        dimensions = self._write_dimensions(circle, ellipse)
         cache = {
             'jpg': dimensions,
             'png': dimensions
         }
-        logging.info('cache: {}'.format(json.dumps(cache, indent=4)))
+
         return cache
+
+    def check_ecllipse(self, coords):
+        data = json.loads(coords)
+        sun = [data['sun_j2000_position']['x'],
+               data['sun_j2000_position']['y'],
+               data['sun_j2000_position']['z']]
+        sun_norm = np.divide(sun, np.linalg.norm(sun))
+        lunar = [data['lunar_j2000_position']['x'],
+                 data['lunar_j2000_position']['y'],
+                 data['lunar_j2000_position']['z']]
+        lunar_norm = np.divide(lunar, np.linalg.norm(lunar))
+        dscovr = [data['dscovr_j2000_position']['x'],
+                  data['dscovr_j2000_position']['y'],
+                  data['dscovr_j2000_position']['z']]
+        dscovr_norm = np.divide(dscovr, np.linalg.norm(dscovr))
+        lunar_dscovr_cross = np.cross(lunar_norm, dscovr_norm)
+        lunar_dscovr_norm = np.linalg.norm(lunar_dscovr_cross)
+        lunar_sun_cross = np.cross(lunar_norm, sun_norm)
+        lunar_sun_norm = np.linalg.norm(lunar_sun_cross)
+        return lunar_dscovr_norm, lunar_sun_norm
 
     def run(self):
         dates = self.missing_dates()
+        # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
+        # lunar eclipse, none
+        align = [['day', 'date', 'image', 'lunar dscovr', 'lunar sun', 'link']]
         for date in dates:
             logging.info('Working on date: ' + date)
             images_json = self.image_list(date)
             logging.info('Read json with {} images'.format(len(images_json)))
             try:
                 for image in images_json:
+                    # fix json coming from the api
+                    image['coords'] = image[
+                        'coords'].replace("'", '"').rstrip(',')
+                    lunar_dscovr, lunar_sun = self.check_ecllipse(
+                        image['coords'])
                     image_name = image['image']
+                    debug_url = 'https://s3.amazonaws.com/{}/{}/debug/{}'.format(
+                        self.config['bucket'],
+                        self.config['images_folder'],
+                        image_name + '.png')
+                    align.append(
+                        [date,
+                         image['date'],
+                            image_name,
+                            lunar_dscovr,
+                            lunar_sun,
+                            debug_url])
                     logging.info('Working on image: ' + image_name)
                     self.png(image_name)
                     self.jpgs(image_name)
                     image['cache'] = self.bounding_shapes(image_name)
                     # delete png
                     os.remove(os.path.join(gettempdir(), image_name + '.png'))
-                    # fix json coming from the api
-                    image['coords'] = image['coords'].replace("'", '"')
                 logging.info(
                     'Uploading json with {} images'.format(
                         len(images_json)))
@@ -305,6 +409,12 @@ class Epic:
                 logging.info(
                     'Skipped date: {} because of an error: {}'.format(date, e.message))
                 continue
+        filename = os.path.join(
+            gettempdir(),
+            datetime.now().strftime('%s') + '.csv')
+        with open(filename, 'wb') as f:
+            csv_writer = csv.writer(f)
+            csv_writer.writerows(align)
         self.invalidate()
 
 
@@ -330,10 +440,6 @@ def main():
         parser.add_argument(
             '--enhanced',
             help='Sync enhanced images',
-            action='store_true')
-        parser.add_argument(
-            '--debug',
-            help='Save debug images',
             action='store_true')
         return parser.parse_args()
 
