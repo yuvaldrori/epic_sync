@@ -280,6 +280,7 @@ class Epic:
             self.config['images_folder'],
             image_name + '.png')
         self._upload_file(debug_file, self.config['bucket'], key)
+        os.remove(debug_file)
 
     def _write_dimensions(self, circle, ellipse):
         center, radius = circle
