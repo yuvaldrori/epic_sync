@@ -356,10 +356,12 @@ class Epic:
         align = [['day', 'date', 'image', 'lunar dscovr', 'lunar sun', 'link']]
         for date in dates:
             logging.info('Working on date: ' + date)
-            images_json = self.image_list(date)
-            logging.info('Read json with {} images'.format(len(images_json)))
-            try:
-                for image in images_json:
+            original_images_json = self.image_list(date)
+            images_json = []
+            logging.info(
+                'Read json with {} images'.format(len(original_images_json)))
+            for image in original_images_json:
+                try:
                     # fix json coming from the api
                     image['coords'] = image[
                         'coords'].replace("'", '"').rstrip(',')
@@ -383,32 +385,33 @@ class Epic:
                     image['cache'] = self.bounding_shapes(image_name)
                     # delete png
                     os.remove(os.path.join(gettempdir(), image_name + '.png'))
-                logging.info(
-                    'Uploading json with {} images'.format(
-                        len(images_json)))
-                self._upload_data(
-                    json.dumps(images_json, indent=4),
-                    self.config['bucket'],
-                    '{}/list/images_{}.json'.format(
-                        self.config['images_folder'],
-                        date),
-                    'application/json')
-                lists = self.dates_completed()
-                self._upload_data(
-                    json.dumps(lists, indent=4),
-                    self.config['bucket'],
-                    self.config['available_dates_path'],
-                    'application/json')
+                except Exception as e:
+                    logging.info(
+                        'Skipped image: from date: {} because of an error: {}'.format(image_name, date, e.message))
+                    continue
+                images_json.append(image)
+            logging.info(
+                'Uploading json with {} images'.format(
+                    len(images_json)))
+            self._upload_data(
+                json.dumps(images_json, indent=4),
+                self.config['bucket'],
+                '{}/list/images_{}.json'.format(
+                    self.config['images_folder'],
+                    date),
+                'application/json')
+            lists = self.dates_completed()
+            self._upload_data(
+                json.dumps(lists, indent=4),
+                self.config['bucket'],
+                self.config['available_dates_path'],
+                'application/json')
+            self.invalidate_paths.add(
+                '/' + self.config['available_dates_path'])
+            if not self.args.full:
+                self.set_latest_date(lists[-1])
                 self.invalidate_paths.add(
-                    '/' + self.config['available_dates_path'])
-                if not self.args.full:
-                    self.set_latest_date(lists[-1])
-                    self.invalidate_paths.add(
-                        '/' + self.config['latest_images_path'])
-            except Exception as e:
-                logging.info(
-                    'Skipped date: {} because of an error: {}'.format(date, e.message))
-                continue
+                    '/' + self.config['latest_images_path'])
         filename = os.path.join(
             gettempdir(),
             datetime.now().strftime('%s') + '.csv')
