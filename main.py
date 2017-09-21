@@ -362,13 +362,13 @@ class Epic:
             logging.info(
                 'Read json with {} images'.format(len(original_images_json)))
             for image in original_images_json:
+                image_name = image['image']
                 try:
                     # fix json coming from the api
                     image['coords'] = image[
                         'coords'].replace("'", '"').rstrip(',')
                     lunar_dscovr, lunar_sun = self.check_ecllipse(
                         image['coords'])
-                    image_name = image['image']
                     debug_url = 'https://s3.amazonaws.com/{}/{}/debug/{}'.format(
                         self.config['bucket'],
                         self.config['images_folder'],
