@@ -1,18 +1,19 @@
 import argparse
-import urllib2
-import logging
+import csv
 import json
+import logging
+import math
+import os
+import urllib2
+from datetime import datetime
+from subprocess import check_call
+from tempfile import gettempdir
+from time import time, sleep, strptime, strftime
+
 import boto3
 import botocore
-import os
-from tempfile import gettempdir
-from subprocess import check_call
-import numpy as np
 import cv2
-import math
-from time import time, sleep, strptime
-import csv
-from datetime import datetime
+import numpy as np
 
 
 class Epic:
@@ -371,6 +372,12 @@ class Epic:
                 'Read json with {} images'.format(len(original_images_json)))
             for image in original_images_json:
                 image_name = image['image']
+                image_date = image['date']
+                # fix image date
+                try:
+                    strptime(image_date, '%Y-%m-%d %H:%M:%S')
+                except BaseException:
+                    image['date'] = strftime('%Y-%m-%d %H:%M:%S', strptime(image_date, '%d-%b-%Y %H:%M:%S'))
                 try:
                     # fix json coming from the api
                     if isinstance(image['coords'], dict):
