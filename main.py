@@ -57,7 +57,7 @@ class Epic:
                 data = urllib2.urlopen(url)
                 if data.code == 200:
                     return data.read()
-            except:
+            except BaseException:
                 sleep(1)
         logging.info('error reading file from ' + url)
         return None
@@ -239,12 +239,12 @@ class Epic:
         return cnt
 
     def _create_debug_image(
-        self,
-        image_name,
-     filename,
-     contour,
-     circle,
-     ellipse):
+            self,
+            image_name,
+            filename,
+            contour,
+            circle,
+            ellipse):
         line_width = 1
         white = (255, 255, 255)
         blue = (255, 0, 0)
@@ -366,15 +366,16 @@ class Epic:
                 try:
                     # fix json coming from the api
                     if isinstance(image['coords'], dict):
-                        image['coords'] = json.dumps(image['coords'])
-                    image['coords'] = image[
-                        'coords'].replace("'", '"').rstrip(',')
+                        image['coords'] = json.dumps(
+                            image['coords']).replace(
+                            "'", '"').rstrip(',')
+                    else:
+                        image['coords'] = image[
+                            'coords'].replace("'", '"').rstrip(',')
                     lunar_dscovr, lunar_sun = self.check_ecllipse(
                         image['coords'])
                     debug_url = 'https://s3.amazonaws.com/{}/{}/debug/{}'.format(
-                        self.config['bucket'],
-                        self.config['images_folder'],
-                        image_name + '.png')
+                        self.config['bucket'], self.config['images_folder'], image_name + '.png')
                     align.append(
                         [date,
                          image['date'],
@@ -390,7 +391,8 @@ class Epic:
                     os.remove(os.path.join(gettempdir(), image_name + '.png'))
                 except Exception as e:
                     logging.info(
-                        'Skipped image: {} from date: {} because of an error: {}'.format(image_name, date, e.message))
+                        'Skipped image: {} from date: {} because of an error: {}'.format(
+                            image_name, date, e.message))
                     continue
                 images_json.append(image)
             logging.info(
