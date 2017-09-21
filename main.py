@@ -356,7 +356,7 @@ class Epic:
             dates = self.args.dates.split(',')
             for d in dates:
                 try:
-                    strptime(d.strip, '%Y-%m-%d')
+                    strptime(d.strip(), '%Y-%m-%d')
                 except BaseException:
                     logging.error('"{}" not a valid date (%Y-%m-%d)'.format(d))
                     exit(-1)
