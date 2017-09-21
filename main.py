@@ -365,6 +365,8 @@ class Epic:
                 image_name = image['image']
                 try:
                     # fix json coming from the api
+                    if isinstance(image['coords'], dict):
+                        image['coords'] = json.dumps(image['coords'])
                     image['coords'] = image[
                         'coords'].replace("'", '"').rstrip(',')
                     lunar_dscovr, lunar_sun = self.check_ecllipse(
