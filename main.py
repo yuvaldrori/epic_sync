@@ -388,7 +388,7 @@ class Epic:
                     os.remove(os.path.join(gettempdir(), image_name + '.png'))
                 except Exception as e:
                     logging.info(
-                        'Skipped image: from date: {} because of an error: {}'.format(image_name, date, e.message))
+                        'Skipped image: {} from date: {} because of an error: {}'.format(image_name, date, e.message))
                     continue
                 images_json.append(image)
             logging.info(
