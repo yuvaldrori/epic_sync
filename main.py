@@ -10,13 +10,12 @@ from subprocess import check_call
 import numpy as np
 import cv2
 import math
-from time import time, sleep
+from time import time, sleep, strptime
 import csv
 from datetime import datetime
 
 
 class Epic:
-
     def __init__(self, args, config):
         self.args = args
         self.config = config
@@ -351,7 +350,16 @@ class Epic:
         return lunar_dscovr_norm, lunar_sun_norm
 
     def run(self):
-        dates = self.missing_dates()
+        if self.args.dates is None:
+            dates = self.missing_dates()
+        else:
+            dates = self.args.dates.split(',')
+            for d in dates:
+                try:
+                    strptime(d.strip, '%Y-%m-%d')
+                except BaseException:
+                    logging.error('"{}" not a valid date (%Y-%m-%d)'.format(d))
+                    exit(-1)
         # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
         # lunar eclipse, none
         align = [['day', 'date', 'image', 'lunar dscovr', 'lunar sun', 'link']]
@@ -379,10 +387,10 @@ class Epic:
                     align.append(
                         [date,
                          image['date'],
-                            image_name,
-                            lunar_dscovr,
-                            lunar_sun,
-                            debug_url])
+                         image_name,
+                         lunar_dscovr,
+                         lunar_sun,
+                         debug_url])
                     logging.info('Working on image: ' + image_name)
                     self.png(image_name)
                     self.jpgs(image_name)
@@ -413,7 +421,7 @@ class Epic:
                 'application/json')
             self.invalidate_paths.add(
                 '/' + self.config['available_dates_path'])
-            if not self.args.full:
+            if self.args.dates is None:
                 self.set_latest_date(lists[-1])
                 self.invalidate_paths.add(
                     '/' + self.config['latest_images_path'])
@@ -429,7 +437,8 @@ class Epic:
 def main():
     def _parse_arguments():
         parser = argparse.ArgumentParser()
-        parser.add_argument(
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument(
             '--full',
             help='Full sync',
             action='store_true')
@@ -449,6 +458,14 @@ def main():
             '--enhanced',
             help='Sync enhanced images',
             action='store_true')
+        group.add_argument(
+            '--dates',
+            help='''
+                 Comma separated list of dates to sync.
+                 Example: "2016-07-05, 2016-03-09".
+                 Implies not syncing lates date.
+                 ''',
+            default=None)
         return parser.parse_args()
 
     def _config(args):
