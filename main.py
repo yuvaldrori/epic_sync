@@ -10,8 +10,8 @@ from subprocess import check_call
 from tempfile import gettempdir
 from time import time, sleep, strptime, strftime
 
-import boto3
-import botocore
+from google.cloud import storage
+from google.cloud.exceptions import NotFound
 import cv2
 import numpy as np
 
@@ -20,35 +20,16 @@ class Epic:
     def __init__(self, args, config):
         self.args = args
         self.config = config
-        self.s3 = boto3.client('s3')
+        storage_client = storage.Client()
+        self.bucket = storage_client.get_bucket(config['bucket'])
         self.invalidate_paths = set()
 
-    def invalidate(self):
-        if not self.args.dryrun and len(self.invalidate_paths) > 0:
-            paths = list(self.invalidate_paths)
-            client = boto3.client('cloudfront')
-            response = client.create_invalidation(
-                DistributionId=self.config['distribution_id'],
-                InvalidationBatch={
-                    'Paths': {
-                        'Quantity': len(paths),
-                        'Items': paths
-                    },
-                    'CallerReference': str(int(time()))
-                }
-            )
-            invalidation_id = response['Invalidation']['Id']
-            logging.info(
-                'Created invalidation for files {} with ID {}'.format(
-                    paths, invalidation_id))
-
-    def _read_file_from_mirror(self, bucket, key):
+    def _read_file_from_mirror(self, key):
         try:
-            return self.s3.get_object(
-                Bucket=bucket, Key=key)['Body'].read()
-        except botocore.exceptions.ClientError as e:
+            return self.bucket.get_blob(key)
+        except NotFound as e:
             logging.info(
-                'error reading file from s3://{}/{}'.format(bucket, key))
+                'error reading file from gs://{}/{}'.format(self.config['bucket'], key))
         return None
 
     def _read_file_from_url(self, url):
@@ -68,23 +49,11 @@ class Epic:
     def dates_completed(self):
         ret = []
         suffix = '.json'
-        kwargs = {
-            'Bucket': self.config['bucket'],
-            'Prefix': '{}/list/images_'.format(self.config['images_folder'])}
-        continuation_token = ''
-        while True:
-            if continuation_token != '':
-                kwargs['ContinuationToken'] = continuation_token
-            response = self.s3.list_objects_v2(**kwargs)
-            if 'Contents' in response:
-                ret += [d['Key'][len(kwargs['Prefix']):-len(suffix)]
-                        for d in response['Contents']]
-            else:
-                return ret
-            if response['IsTruncated']:
-                continuation_token = response['NextContinuationToken']
-            else:
-                return sorted(ret)
+        prefix = '{}/list/images_'.format(self.config['images_folder'])
+        blobs = self.bucket.list_blobs(prefix=prefix)
+        for blob in blobs:
+            ret += blob[len(prefix):-len(suffix)]
+        return sorted(ret)
 
     def missing_dates(self):
         ret = []
@@ -120,20 +89,18 @@ class Epic:
         bucket = self.config['bucket']
         key = '{}/list/images_{}.json'.format(
             self.config['images_folder'], date)
-        data = self._read_file_from_mirror(bucket, key)
+        data = self._read_file_from_mirror(key)
         return self._read_json(data)
 
-    def _upload_file(self, path, bucket, key):
+    def _upload_file(self, path, key):
         if not self.args.dryrun:
-            self.s3.upload_file(path, bucket, key)
+            blob = storage.Blob(key, self.config['bucket'])
+            blob.upload_from_filename(path)
 
-    def _upload_data(self, body, bucket, key, content_type):
+    def _upload_data(self, body, key, content_type):
         if not self.args.dryrun:
-            self.s3.put_object(
-                Body=body,
-                Bucket=bucket,
-                Key=key,
-                ContentType=content_type)
+            blob = storage.Blob(key, self.config['bucket'])
+            blob.upload_from_string(body, content_type)
 
     def set_latest_date(self, date):
         source = {
@@ -144,7 +111,9 @@ class Epic:
         bucket = self.config['bucket']
         key = self.config['latest_images_path']
         if not self.args.dryrun:
-            self.s3.copy_object(Bucket=bucket, Key=key, CopySource=source)
+            blob = storage.Blob(source, self.config['bucket'])
+            self.bucket.copy_blob(blob, self.config['bucket'], key)
+            self.storage_client.copy_object(Bucket=bucket, Key=key, CopySource=source)
 
     def get_date_from_image_name(self, image_name):
         date_part_from_name = image_name.split('_')[2]
