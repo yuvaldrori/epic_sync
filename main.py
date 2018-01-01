@@ -22,7 +22,6 @@ class Epic:
         self.config = config
         storage_client = storage.Client()
         self.bucket = storage_client.get_bucket(config['bucket'])
-        self.invalidate_paths = set()
 
     def _read_file_from_mirror(self, key):
         try:
@@ -52,7 +51,7 @@ class Epic:
         prefix = '{}/list/images_'.format(self.config['images_folder'])
         blobs = self.bucket.list_blobs(prefix=prefix)
         for blob in blobs:
-            ret += blob.name[len(prefix):-len(suffix)]
+            ret.append(blob.name[len(prefix):-len(suffix)])
         return sorted(ret)
 
     def missing_dates(self):
@@ -388,12 +387,8 @@ class Epic:
                 json.dumps(lists, indent=4),
                 self.config['available_dates_path'],
                 'application/json')
-            self.invalidate_paths.add(
-                '/' + self.config['available_dates_path'])
             if self.args.dates is None:
                 self.set_latest_date(lists[-1])
-                self.invalidate_paths.add(
-                    '/' + self.config['latest_images_path'])
         filename = os.path.join(
             gettempdir(),
             datetime.now().strftime('%s') + '.csv')
