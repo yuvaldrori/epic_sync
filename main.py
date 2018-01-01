@@ -138,7 +138,7 @@ class Epic:
         key = '{}/png/{}.png'.format(self.config['images_folder'], image_name)
         logging.info(
             'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
-        self._upload_file(filename, self.config['bucket'], key)
+        self._upload_file(filename, key)
 
     def jpgs(self, image_name):
         for res in self.config['res']:
@@ -165,7 +165,7 @@ class Epic:
                     image_name)
             logging.info(
                 'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
-            self._upload_file(outfile, self.config['bucket'], key)
+            self._upload_file(outfile, key)
             os.remove(outfile)
 
     def _boxPoints(self, ellipse):
@@ -248,7 +248,7 @@ class Epic:
         key = '{}/debug/{}'.format(
             self.config['images_folder'],
             image_name + '.png')
-        self._upload_file(debug_file, self.config['bucket'], key)
+        self._upload_file(debug_file, key)
         os.remove(debug_file)
 
     def _write_dimensions(self, circle, ellipse):
@@ -358,7 +358,7 @@ class Epic:
                             'coords'].replace("'", '"').rstrip(',')
                     lunar_dscovr, lunar_sun = self.check_ecllipse(
                         image['coords'])
-                    debug_url = 'https://s3.amazonaws.com/{}/{}/debug/{}'.format(
+                    debug_url = 'https://storage.cloud.google.com/{}/{}/debug/{}'.format(
                         self.config['bucket'], self.config['images_folder'], image_name + '.png')
                     align.append(
                         [date,
@@ -384,15 +384,13 @@ class Epic:
                     len(images_json)))
             self._upload_data(
                 json.dumps(images_json, indent=4),
-                self.config['bucket'],
-                '{}/list/images_{}.json'.format(
-                    self.config['images_folder'],
-                    date),
-                'application/json')
+            '{}/list/images_{}.json'.format(
+                self.config['images_folder'],
+                date),
+            'application/json')
             lists = self.dates_completed()
             self._upload_data(
                 json.dumps(lists, indent=4),
-                self.config['bucket'],
                 self.config['available_dates_path'],
                 'application/json')
             self.invalidate_paths.add(
@@ -407,7 +405,6 @@ class Epic:
         with open(filename, 'wb') as f:
             csv_writer = csv.writer(f)
             csv_writer.writerows(align)
-        self.invalidate()
 
 
 def main():
@@ -455,7 +452,6 @@ def main():
         else:
             config['bucket'] = 'blueturn-content'
 
-        config['distribution_id'] = 'E21HG4M80KUJI5'
         base_url = 'http://epic.gsfc.nasa.gov'
         if args.enhanced:
             config['api_url'] = base_url + '/api/enhanced'
