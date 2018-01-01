@@ -111,8 +111,8 @@ class Epic:
         bucket = self.config['bucket']
         key = self.config['latest_images_path']
         if not self.args.dryrun:
-            blob = storage.Blob(source, self.config['bucket'])
-            self.bucket.copy_blob(blob, self.config['bucket'], key)
+            blob = storage.Blob(source, bucket)
+            self.bucket.copy_blob(blob, bucket, key)
             self.storage_client.copy_object(Bucket=bucket, Key=key, CopySource=source)
 
     def get_date_from_image_name(self, image_name):
