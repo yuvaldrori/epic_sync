@@ -25,7 +25,8 @@ class Epic:
 
     def _read_file_from_mirror(self, key):
         try:
-            return self.bucket.get_blob(key)
+            blob = self.bucket.get_blob(key)
+            return blob.download_as_string()
         except NotFound as e:
             logging.info(
                 'error reading file from gs://{}/{}'.format(self.config['bucket'], key))
