@@ -52,7 +52,7 @@ class Epic:
         prefix = '{}/list/images_'.format(self.config['images_folder'])
         blobs = self.bucket.list_blobs(prefix=prefix)
         for blob in blobs:
-            ret += blob[len(prefix):-len(suffix)]
+            ret += blob.name[len(prefix):-len(suffix)]
         return sorted(ret)
 
     def missing_dates(self):
