@@ -94,26 +94,21 @@ class Epic:
 
     def _upload_file(self, path, key):
         if not self.args.dryrun:
-            blob = storage.Blob(key, self.config['bucket'])
+            blob = storage.Blob(key, self.bucket)
             blob.upload_from_filename(path)
 
     def _upload_data(self, body, key, content_type):
         if not self.args.dryrun:
-            blob = storage.Blob(key, self.config['bucket'])
+            blob = storage.Blob(key, self.bucket)
             blob.upload_from_string(body, content_type)
 
     def set_latest_date(self, date):
-        source = {
-            'Bucket': self.config['bucket'],
-            'Key': '{}/list/images_{}.json'.format(
+        source = '{}/list/images_{}.json'.format(
                 self.config['images_folder'], date)
-        }
-        bucket = self.config['bucket']
         key = self.config['latest_images_path']
         if not self.args.dryrun:
-            blob = storage.Blob(source, bucket)
-            self.bucket.copy_blob(blob, bucket, key)
-            self.storage_client.copy_object(Bucket=bucket, Key=key, CopySource=source)
+            blob = storage.Blob(source, self.bucket)
+            self.bucket.copy_blob(blob, self.bucket, key)
 
     def get_date_from_image_name(self, image_name):
         date_part_from_name = image_name.split('_')[2]
