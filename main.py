@@ -132,7 +132,7 @@ class Epic:
             f.write(data)
         key = '{}/png/{}.png'.format(self.config['images_folder'], image_name)
         logging.info(
-            'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
+            'Uploading to gs://{}/{}'.format(self.config['bucket'], key))
         self._upload_file(filename, key)
 
     def jpgs(self, image_name):
@@ -159,7 +159,7 @@ class Epic:
                     res,
                     image_name)
             logging.info(
-                'Uploading to s3://{}/{}'.format(self.config['bucket'], key))
+                'Uploading to gs://{}/{}'.format(self.config['bucket'], key))
             self._upload_file(outfile, key)
             os.remove(outfile)
 
