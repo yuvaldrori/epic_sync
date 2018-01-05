@@ -441,7 +441,7 @@ def main():
         if args.dev:
             config['bucket'] = 'blueturn-content-dev'
         else:
-            config['bucket'] = 'blueturn-content'
+            config['bucket'] = 'content.blueturn.earth'
 
         base_url = 'http://epic.gsfc.nasa.gov'
         if args.enhanced:
