@@ -365,8 +365,10 @@ class Epic:
                     logging.info('Working on image: ' + image_name)
                     self.png(image_name)
                     self.jpgs(image_name)
+                    logging.debug('Extract bounding shapes for image: ' + image_name)
                     image['cache'] = self.bounding_shapes(image_name)
                     # delete png
+                    logging.debug('Delete PNG for image: ' + image_name)
                     os.remove(os.path.join(gettempdir(), image_name + '.png'))
                 except Exception as e:
                     logging.info(
