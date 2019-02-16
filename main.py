@@ -343,7 +343,7 @@ class Epic:
                 try:
                     strptime(image_date, '%Y-%m-%d %H:%M:%S')
                 except BaseException:
-                    logging.error('Failed to parse image date: ' + image_date)
+                    logging.error('Failed to parse image date for: ' + image_name)
                     continue
                 try:
                     # fix json coming from the api
