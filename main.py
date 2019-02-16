@@ -80,7 +80,7 @@ class Epic:
         ret = []
         dates_from_api = self.api_dates()
         dates_from_mirror = self.completed_dates()
-        edited_dates = []
+        edited_dates = set([])
         common_dates = set(dates_from_api) & set(dates_from_mirror)
         for date in common_dates:
             logging.info('len for date: ' + date)
