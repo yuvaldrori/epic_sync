@@ -67,16 +67,17 @@ class Epic:
         else:
             dates_from_mirror = self.dates_completed()
             missing_dates = set(dates_from_api) - set(dates_from_mirror)
-            common_dates = set(dates_from_api) & set(dates_from_mirror)
-            for date in common_dates:
-                logging.info('len for date: ' + date)
-                num_images_api = len(self.image_list(date))
-                num_images_archive = len(self.image_list_mirror(date))
-                if num_images_api != num_images_archive:
-                    logging.info(
-                        'At date: {}, api: {}, arch: {}'.format(
-                            date, num_images_api, num_images_archive))
-                    missing_dates.add(date)
+            if not self.args.nooverwrite:
+                common_dates = set(dates_from_api) & set(dates_from_mirror)
+                for date in common_dates:
+                    logging.info('len for date: ' + date)
+                    num_images_api = len(self.image_list(date))
+                    num_images_archive = len(self.image_list_mirror(date))
+                    if num_images_api != num_images_archive:
+                        logging.info(
+                            'At date: {}, api: {}, arch: {}'.format(
+                                date, num_images_api, num_images_archive))
+                        missing_dates.add(date)
             ret = missing_dates
         return sorted(ret, reverse=True)
 
