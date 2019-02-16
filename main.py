@@ -410,6 +410,10 @@ def main():
             help='Full sync',
             action='store_true')
         parser.add_argument(
+            '--nooverwrite',
+            help='Not overwriting existing dates',
+            action='store_true')
+        parser.add_argument(
             '--dryrun',
             help='Not writing to mirror',
             action='store_true')
