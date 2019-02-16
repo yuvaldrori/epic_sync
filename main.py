@@ -46,7 +46,7 @@ class Epic:
     def _read_json(self, data):
         return json.loads(data)
 
-    def dates_completed(self):
+    def completed_dates(self):
         ret = []
         suffix = '.json'
         prefix = '{}/list/images_'.format(self.config['images_folder'])
@@ -55,30 +55,43 @@ class Epic:
             ret.append(blob.name[len(prefix):-len(suffix)])
         return sorted(ret)
 
-    def missing_dates(self):
+    def api_dates(self):
         ret = []
         url = self.config['api_url'] + '/all'
         data = self._read_file_from_url(url)
         dates_from_api = []
         for d in self._read_json(data):
             dates_from_api.append(d['date'])
-        if self.args.full:
-            ret = dates_from_api
-        else:
-            dates_from_mirror = self.dates_completed()
-            missing_dates = set(dates_from_api) - set(dates_from_mirror)
-            if not self.args.nooverwrite:
-                common_dates = set(dates_from_api) & set(dates_from_mirror)
-                for date in common_dates:
-                    logging.info('len for date: ' + date)
-                    num_images_api = len(self.image_list(date))
-                    num_images_archive = len(self.image_list_mirror(date))
-                    if num_images_api != num_images_archive:
-                        logging.info(
-                            'At date: {}, api: {}, arch: {}'.format(
-                                date, num_images_api, num_images_archive))
-                        missing_dates.add(date)
-            ret = missing_dates
+        ret = dates_from_api
+        return sorted(ret, reverse=True)
+
+    def full_dates(self):
+        return self.api_dates()
+
+    def missing_dates(self):
+        ret = []
+        dates_from_api = self.api_dates()
+        dates_from_mirror = self.completed_dates()
+        missing_dates = set(dates_from_api) - set(dates_from_mirror)
+        ret = missing_dates
+        return sorted(ret, reverse=True)
+
+    def edited_dates(self):
+        ret = []
+        dates_from_api = self.api_dates()
+        dates_from_mirror = self.completed_dates()
+        edited_dates = []
+        common_dates = set(dates_from_api) & set(dates_from_mirror)
+        for date in common_dates:
+            logging.info('len for date: ' + date)
+            num_images_api = len(self.image_list(date))
+            num_images_archive = len(self.image_list_mirror(date))
+            if num_images_api != num_images_archive:
+                logging.info(
+                    'At date: {}, api: {}, arch: {}'.format(
+                        date, num_images_api, num_images_archive))
+                edited_dates.add(date)
+        ret = edited_dates
         return sorted(ret, reverse=True)
 
     def image_list(self, date):
@@ -315,19 +328,7 @@ class Epic:
         lunar_sun_norm = np.linalg.norm(lunar_sun_cross)
         return lunar_dscovr_norm, lunar_sun_norm
 
-    def run(self):
-        if self.args.dates is None:
-            dates = self.missing_dates()
-        else:
-            dates = self.args.dates.split(',')
-            for d in dates:
-                try:
-                    strptime(d.strip(), '%Y-%m-%d')
-                except BaseException:
-                    logging.error('"{}" not a valid date (%Y-%m-%d)'.format(d))
-                    exit(-1)
-        # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
-        # lunar eclipse, none
+    def run_dates(self, dates):
         align = [['day', 'date', 'image', 'lunar dscovr', 'lunar sun', 'link']]
         for date in dates:
             logging.info('Working on date: ' + date)
@@ -386,13 +387,35 @@ class Epic:
                 self.config['images_folder'],
                 date),
             'application/json')
-            lists = self.dates_completed()
+            lists = self.completed_dates()
             self._upload_data(
                 json.dumps(lists, indent=4),
                 self.config['available_dates_path'],
                 'application/json')
             if self.args.dates is None:
                 self.set_latest_date(lists[-1])
+
+    def run(self):
+        if self.args.dates is None:
+            if self.args.full:
+                dates = self.full_dates()
+            else: 
+                dates = self.missing_dates()
+                run_dates(dates)
+                dates = []
+                if (self.args.nooverwrite):
+                    dates = self.edited_dates()
+        else:
+            dates = self.args.dates.split(',')
+            for d in dates:
+                try:
+                    strptime(d.strip(), '%Y-%m-%d')
+                except BaseException:
+                    logging.error('"{}" not a valid date (%Y-%m-%d)'.format(d))
+                    exit(-1)
+        # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
+        # lunar eclipse, none
+        run_dates(self, dates)
         filename = os.path.join(
             gettempdir(),
             datetime.now().strftime('%s') + '.csv')
