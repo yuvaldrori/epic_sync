@@ -401,7 +401,7 @@ class Epic:
                 dates = self.full_dates()
             else: 
                 dates = self.missing_dates()
-                run_dates(dates)
+                self.run_dates(dates)
                 dates = []
                 if (self.args.nooverwrite):
                     dates = self.edited_dates()
@@ -415,7 +415,7 @@ class Epic:
                     exit(-1)
         # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
         # lunar eclipse, none
-        run_dates(self, dates)
+        self.run_dates(dates)
         filename = os.path.join(
             gettempdir(),
             datetime.now().strftime('%s') + '.csv')
