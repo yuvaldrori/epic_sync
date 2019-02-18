@@ -403,6 +403,9 @@ class Epic:
         #    csv_writer.writerows(align)
 
     def run(self):
+        # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
+        # lunar eclipse, none
+        #self.run_dates(dates)
         if self.args.dates is None:
             if self.args.full:
                 dates = self.full_dates()
@@ -410,8 +413,9 @@ class Epic:
                 dates = self.missing_dates()
                 self.run_dates(dates)
                 dates = []
-                if (self.args.nooverwrite):
+                if not self.args.nooverwrite:
                     dates = self.edited_dates()
+                    self.run_dates(dates)
         else:
             dates = self.args.dates.split(',')
             for d in dates:
@@ -420,9 +424,7 @@ class Epic:
                 except BaseException:
                     logging.error('"{}" not a valid date (%Y-%m-%d)'.format(d))
                     exit(-1)
-        # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
-        # lunar eclipse, none
-        self.run_dates(dates)
+                self.run_dates(dates)
 
 
 def main():
