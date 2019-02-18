@@ -395,6 +395,12 @@ class Epic:
                 'application/json')
             if self.args.dates is None:
                 self.set_latest_date(lists[-1])
+        filename = os.path.join(
+            gettempdir(),
+            datetime.now().strftime('%s') + '.csv')
+        with open(filename, 'wb') as f:
+            csv_writer = csv.writer(f)
+            csv_writer.writerows(align)
 
     def run(self):
         if self.args.dates is None:
@@ -417,12 +423,6 @@ class Epic:
         # dates = ['2016-07-05', '2016-03-09', '2017-02-12'] # moon in frame,
         # lunar eclipse, none
         self.run_dates(dates)
-        filename = os.path.join(
-            gettempdir(),
-            datetime.now().strftime('%s') + '.csv')
-        with open(filename, 'wb') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerows(align)
 
 
 def main():
