@@ -329,7 +329,7 @@ class Epic:
         return lunar_dscovr_norm, lunar_sun_norm
 
     def run_dates(self, dates):
-        align = [['day', 'date', 'image', 'lunar dscovr', 'lunar sun', 'link']]
+        #align = [['day', 'date', 'image', 'lunar dscovr', 'lunar sun', 'link']]
         for date in dates:
             logging.info('Working on date: ' + date)
             original_images_json = self.image_list(date)
@@ -358,13 +358,13 @@ class Epic:
                         image['coords'])
                     debug_url = 'https://storage.cloud.google.com/{}/{}/debug/{}'.format(
                         self.config['bucket'], self.config['images_folder'], image_name + '.png')
-                    align.append(
-                        [date,
-                         image['date'],
-                         image_name,
-                         lunar_dscovr,
-                         lunar_sun,
-                         debug_url])
+                    #align.append(
+                    #    [date,
+                    #     image['date'],
+                    #     image_name,
+                    #     lunar_dscovr,
+                    #     lunar_sun,
+                    #     debug_url])
                     logging.info('Working on image: ' + image_name)
                     self.png(image_name)
                     self.jpgs(image_name)
@@ -395,12 +395,12 @@ class Epic:
                 'application/json')
             if self.args.dates is None:
                 self.set_latest_date(lists[-1])
-        filename = os.path.join(
-            gettempdir(),
-            datetime.now().strftime('%s') + '.csv')
-        with open(filename, 'wb') as f:
-            csv_writer = csv.writer(f)
-            csv_writer.writerows(align)
+        #filename = os.path.join(
+        #    gettempdir(),
+        #    datetime.now().strftime('%s') + '.csv')
+        #with open(filename, 'wb') as f:
+        #    csv_writer = csv.writer(f)
+        #    csv_writer.writerows(align)
 
     def run(self):
         if self.args.dates is None:
