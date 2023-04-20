@@ -495,12 +495,15 @@ def main():
         config['res'] = ['2048', '1024', '512', '256', '120']
         return config
 
+    logging.info('parse args');
     args = _parse_arguments()
     config = _config(args)
 
+    logging.info('run Epic');
     epic = Epic(args, config)
     epic.run()
 
 
 if __name__ == '__main__':
+    logging.info('start main');
     main()
