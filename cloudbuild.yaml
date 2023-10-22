@@ -28,3 +28,5 @@
     - '1'
   images:
   - 'us-west1-docker.pkg.dev/$PROJECT_ID/docker/epic_sync:$COMMIT_SHA'
+  options:
+    logging: CLOUD_LOGGING_ONLY
