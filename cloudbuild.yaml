@@ -15,7 +15,7 @@
     - 'deploy'
     - 'epic-sync'
     - '--image'
-    - 'gcr.io/$PROJECT_ID/SERVICE-NAME:$COMMIT_SHA'
+    - 'us-west1-docker.pkg.dev/$PROJECT_ID/docker/epic_sync:$COMMIT_SHA'
     - '--region'
     - 'us-west1'
     - '--tasks'
