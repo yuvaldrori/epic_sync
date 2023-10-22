@@ -1,5 +1,7 @@
 FROM python:2
 
+ENV PYTHONUNBUFFERED True
+
 WORKDIR /app
 
 COPY requirements.txt ./
