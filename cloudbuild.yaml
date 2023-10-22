@@ -28,6 +28,10 @@
     - '1'
     - '--service-account'
     - 'epic-sync-job@blueturn-1490797095536.iam.gserviceaccount.com'
+    - '--memory'
+    - '512Mi'
+    - '--cpu'
+    - '1'
   images:
   - 'us-west1-docker.pkg.dev/$PROJECT_ID/docker/epic_sync:$COMMIT_SHA'
   options:
