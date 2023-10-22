@@ -1,0 +1,30 @@
+  steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-west1-docker.pkg.dev/$PROJECT_ID/docker/epic_sync:$COMMIT_SHA', '.']
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-west1-docker.pkg.dev/$PROJECT_ID/docker/epic_sync:$COMMIT_SHA']
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+    - 'beta'
+    - 'run'
+    - 'jobs'
+    - 'deploy'
+    - 'epic_sync'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/SERVICE-NAME:$COMMIT_SHA'
+    - '--region'
+    - 'us-west1'
+    - '--tasks'
+    - '1'
+    - '--max-retries'
+    - '1'
+    - '--task-timeout'
+    - '50m'
+    - '--parallelism'
+    - '1'
+  images:
+  - 'us-west1-docker.pkg.dev/$PROJECT_ID/docker/epic_sync:$COMMIT_SHA'
