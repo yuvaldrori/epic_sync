@@ -13,7 +13,7 @@
     - 'run'
     - 'jobs'
     - 'deploy'
-    - 'epic_sync'
+    - 'epic-sync'
     - '--image'
     - 'gcr.io/$PROJECT_ID/SERVICE-NAME:$COMMIT_SHA'
     - '--region'
