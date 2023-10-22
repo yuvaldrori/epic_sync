@@ -15,4 +15,4 @@ RUN pip install -r requirements.txt
 
 COPY main.py .
 
-CMD ["python", "main.py"]
+CMD ["/usr/bin/python2.7", "main.py"]
