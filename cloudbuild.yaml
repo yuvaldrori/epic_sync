@@ -23,7 +23,7 @@
     - '--max-retries'
     - '1'
     - '--task-timeout'
-    - '50m'
+    - '2h'
     - '--parallelism'
     - '1'
     - '--service-account'
